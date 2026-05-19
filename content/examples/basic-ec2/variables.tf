@@ -1,0 +1,10 @@
+---
+title: "variable "key_name" {"
+type: docs
+---
+
+variable "key_name" {
+  description = "SSH key pair name for EC2 instance"
+  type        = string
+  default     = null
+}

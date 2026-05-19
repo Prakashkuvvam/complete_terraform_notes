@@ -1,0 +1,8 @@
+---
+title: "region         = "us-east-1""
+type: docs
+---
+
+region         = "us-east-1"
+instance_type  = "t2.micro"
+# key_name = "your-key-pair-name"  # Uncomment and set if you want SSH access

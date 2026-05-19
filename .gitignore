@@ -1,0 +1,33 @@
+# Hugo build output
+/public/
+/resources/
+/hugo.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Terraform variable files - keep example, ignore actual
+*.tfvars
+!*.tfvars.example
+
+# CLI config files
+.terraformrc
+terraform.rc
+
+# Archive (source originals moved during Hugo conversion)
+/archive/
