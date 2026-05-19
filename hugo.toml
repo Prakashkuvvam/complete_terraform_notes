@@ -1,4 +1,4 @@
-baseURL = "/"
+baseURL = "/complete_terraform_notes/"
 title = "Terraform Learning Path"
 theme = "book"
 locale = "en-us"
@@ -19,7 +19,7 @@ defaultContentLanguage = "en"
   BookSectionNumber = true
 
   # Repository configuration
-  BookRepo = "https://github.com/YOUR_USERNAME/terraform-learning"
+  BookRepo = "https://github.com/prakashkuvvam/complete_terraform_notes"
   BookEditPath = "edit/main/content"
   BookCommitPath = "commit/main/content"
 
@@ -56,25 +56,25 @@ defaultContentLanguage = "en"
   [[menu.before]]
     identifier = "home"
     name = "Home"
-    url = "/"
+    url = "/complete_terraform_notes/"
     weight = 1
 
   [[menu.before]]
     identifier = "docs"
     name = "Documentation"
-    url = "/docs/"
+    url = "/complete_terraform_notes/docs/"
     weight = 2
 
   [[menu.before]]
     identifier = "labs"
     name = "Labs"
-    url = "/labs/"
+    url = "/complete_terraform_notes/labs/"
     weight = 3
 
   [[menu.before]]
     identifier = "examples"
     name = "Examples"
-    url = "/examples/"
+    url = "/complete_terraform_notes/examples/"
     weight = 4
 
 # Taxonomies
