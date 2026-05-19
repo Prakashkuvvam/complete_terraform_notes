@@ -56,25 +56,25 @@ defaultContentLanguage = "en"
   [[menu.before]]
     identifier = "home"
     name = "Home"
-    url = "/complete_terraform_notes/"
+    url = "/"
     weight = 1
 
   [[menu.before]]
     identifier = "docs"
     name = "Documentation"
-    url = "/complete_terraform_notes/docs/"
+    url = "/docs/"
     weight = 2
 
   [[menu.before]]
     identifier = "labs"
     name = "Labs"
-    url = "/complete_terraform_notes/labs/"
+    url = "/labs/"
     weight = 3
 
   [[menu.before]]
     identifier = "examples"
     name = "Examples"
-    url = "/complete_terraform_notes/examples/"
+    url = "/examples/"
     weight = 4
 
 # Taxonomies
