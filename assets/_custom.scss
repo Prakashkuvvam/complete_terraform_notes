@@ -620,6 +620,155 @@ pre:focus-within > .copy-button {
 }
 
 /* ===========================================
+   Dashboard Section Cards
+   For learning progress by section group
+   =========================================== */
+
+.dashboard-section-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  background: var(--body-background);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.dashboard-section-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-color: var(--gray-300);
+}
+
+.dashboard-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard-section-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--gray-500);
+  border: 1px solid var(--gray-200);
+}
+
+.dashboard-section-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
+.dashboard-section-bar-wrapper {
+  width: 100%;
+  height: 4px;
+  background: var(--gray-200);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.dashboard-section-bar-fill {
+  height: 100%;
+  background: var(--color-link);
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+.dashboard-section-chapters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dashboard-chapter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+  font-size: 0.85rem;
+}
+
+.dashboard-chapter-row:hover {
+  background: var(--gray-100);
+}
+
+.dashboard-chapter-row.completed {
+  color: var(--body-font-color);
+}
+
+.dashboard-chapter-check {
+  transform: scale(1.1);
+  accent-color: var(--color-link);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dashboard-chapter-status {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+}
+
+.dashboard-chapter-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Combined progress bar */
+.exam-combined-progress {
+  margin-bottom: 1.5rem;
+}
+
+/* Chapter progress bar at bottom of chapter pages */
+.chapter-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  margin: 2rem 0;
+  transition: border-color 0.2s ease;
+}
+
+.chapter-progress-bar:hover {
+  border-color: var(--gray-300);
+}
+
+.chapter-complete-checkbox {
+  transform: scale(1.2);
+  accent-color: var(--color-link);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chapter-complete-label {
+  cursor: pointer;
+  font-weight: 600;
+  flex: 1;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chapter-status-badge {
+  font-size: 0.8rem;
+  color: var(--gray-500);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ===========================================
    Sidebar & ToC Toggle Buttons
    Collapse/expand panels on desktop
    =========================================== */
