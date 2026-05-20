@@ -516,6 +516,19 @@ terraform init -get=false
 - [Terraform AWS Provider Docs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [HCL Specification](https://github.com/hashicorp/hcl)
 
+### Example Projects to Explore
+
+Now that you understand the basics, explore these real-world examples:
+
+- **🖥️ [Basic EC2]({{< relref "/examples/basic-ec2" >}})** — Simple EC2 instance with variables and outputs
+- **🏗️ [VPC Module]({{< relref "/examples/vpc-module" >}})** — Reusable VPC with public/private subnets
+- **📦 [Multi-Tier App]({{< relref "/examples/multi-tier-app" >}})** — VPC + ALB + ASG + RDS architecture
+- **⚡ [Serverless API]({{< relref "/examples/serverless-api" >}})** — Lambda + API Gateway + DynamoDB (serverless pattern)
+- **🐳 [ECS Fargate]({{< relref "/examples/ecs-fargate" >}})** — Containerized app on ECS with auto-scaling
+- **☸️ [EKS Cluster]({{< relref "/examples/eks-cluster" >}})** — Managed Kubernetes cluster with node groups
+- **🌐 [S3 + CloudFront Website]({{< relref "/examples/s3-cloudfront-website" >}})** — Static site hosting with CDN and WAF
+- **🏭 [Production-Ready]({{< relref "/examples/production-ready" >}})** — Full production-grade infrastructure pattern
+
 ---
 
 *Continue to → <a href="{{< relref "02-terraform-core-concepts" >}}">Chapter 2: Terraform Core Concepts</a>*

@@ -9,7 +9,7 @@ bookToC: false
 
 ## 📚 Curriculum Overview
 
-This curriculum is structured into **15 comprehensive chapters** + **hands-on labs** + **example projects**. Each chapter builds on the previous, taking you from fundamentals to production-grade infrastructure-as-code.
+This curriculum is structured into **17 comprehensive chapters** + **hands-on labs** + **example projects**. Each chapter builds on the previous, taking you from fundamentals to production-grade infrastructure-as-code.
 
 ### 🗺️ Learning Path
 
@@ -18,7 +18,7 @@ This curriculum is structured into **15 comprehensive chapters** + **hands-on la
 | **Foundation** | 1–4 | Understand IaC concepts, Terraform CLI, HCL syntax | Week 1 |
 | **Core Skills** | 5–8 | Variables, state management, modules, workspaces | Week 2 |
 | **Advanced** | 9–12 | Functions, provisioners, Cloud, import/refactor | Week 3 |
-| **Production & Exam Prep** | 13–15 | Security, production patterns, exam practice | Week 4 |
+| **Production & Exam Prep** | 13–17 | Security, production patterns, exam practice, interviews, scenarios | Week 4+ |
 
 ---
 
@@ -41,6 +41,8 @@ This curriculum is structured into **15 comprehensive chapters** + **hands-on la
 | 13 | [Security & Compliance]({{< relref "docs/13-security-best-practices" >}}) | Sensitive data, secrets management, Sentinel policies, least privilege |
 | 14 | [Production-Grade Terraform]({{< relref "docs/14-production-grade-terraform" >}}) | CI/CD, monorepo vs multi-repo, testing, code reviews, team workflows |
 | 15 | [Exam Preparation Guide]({{< relref "docs/15-exam-preparation" >}}) | Exam structure, objectives, sample questions, study tips, cheat sheet |
+| 16 | [Interview Questions & Answers]({{< relref "docs/16-interview-questions" >}}) | 50+ categorized interview questions with detailed answers |
+| 17 | [Real-World Scenarios]({{< relref "docs/17-real-world-scenarios" >}}) | 12 practical troubleshooting & design scenarios |
 
 ## 🛠️ Hands-On Labs
 
@@ -63,6 +65,10 @@ This curriculum is structured into **15 comprehensive chapters** + **hands-on la
 | VPC Module | Reusable VPC module with subnets |
 | Multi-Tier App | 3-tier web app with ALB, ASG, RDS |
 | Production Ready | Full production setup with remote state, CI/CD |
+| Serverless API | REST API with Lambda + API Gateway + DynamoDB |
+| ECS Fargate | Containerized app with ECS Fargate and auto-scaling |
+| EKS Cluster | Managed Kubernetes cluster with node groups |
+| S3 + CloudFront | Static website with CDN, WAF, and custom domain |
 
 [View all examples →]({{< relref "examples" >}})
 

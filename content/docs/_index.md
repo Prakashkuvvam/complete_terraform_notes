@@ -42,3 +42,10 @@ Welcome to the comprehensive Terraform learning curriculum. This section contain
 | 13 | [Security & Compliance]({{< relref "13-security-best-practices" >}}) | Secrets management, IAM, Sentinel policies |
 | 14 | [Production-Grade Terraform]({{< relref "14-production-grade-terraform" >}}) | CI/CD, testing, team workflows, disaster recovery |
 | 15 | [Exam Preparation Guide]({{< relref "15-exam-preparation" >}}) | Sample questions, cheat sheet, study plan |
+
+## Bonus Chapters
+
+| # | Chapter | Description |
+|---|---------|-------------|
+| 16 | [Interview Questions & Answers]({{< relref "16-interview-questions" >}}) | 50+ interview questions from beginner to expert level |
+| 17 | [Real-World Scenario Questions]({{< relref "17-real-world-scenarios" >}}) | 12 practical troubleshooting & design scenarios |

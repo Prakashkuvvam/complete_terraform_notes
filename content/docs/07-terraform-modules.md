@@ -742,4 +742,6 @@ module "auto_scaling" {
 
 ---
 
+> **📂 See Modules in Action:** Explore how modules are used in real-world projects like the [VPC Module]({{< relref "/examples/vpc-module" >}}), [ECS Fargate]({{< relref "/examples/ecs-fargate" >}}), [EKS Cluster]({{< relref "/examples/eks-cluster" >}}), and the [Production-Ready Example]({{< relref "/examples/production-ready" >}}).
+
 *Continue to → <a href="{{< relref "08-workspaces-and-environments" >}}">Chapter 8: Workspaces & Environments</a>*

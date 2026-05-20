@@ -682,4 +682,6 @@ locals {
 
 ---
 
+> **📂 Real-World Examples:** Put these patterns into practice with the complete [Production-Ready Example]({{< relref "/examples/production-ready" >}}), explore [ECS Fargate]({{< relref "/examples/ecs-fargate" >}}) for containerized workloads, or see the [EKS Cluster]({{< relref "/examples/eks-cluster" >}}) for Kubernetes deployments.
+
 *Continue to → <a href="{{< relref "15-exam-preparation" >}}">Chapter 15: Exam Preparation Guide</a>*
