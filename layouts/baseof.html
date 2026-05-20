@@ -25,6 +25,7 @@
         {{ partial "docs/inject/footer" . }}
         {{ template "copyright" . }} <!-- Copyright block -->
         {{ template "clipboard" . }}
+        {{ template "examtimer" . }}
       </footer>
 
       <label for="menu-control" class="hidden book-menu-overlay"></label>
@@ -71,6 +72,12 @@
 
 {{ define "clipboard" }}
   {{ with resources.Get "copy-button.js" | resources.Minify }}
+    <script>{{ .Content | safeJS }}</script>
+  {{ end }}
+{{ end }}
+
+{{ define "examtimer" }}
+  {{ with resources.Get "exam-timer.js" | resources.Minify }}
     <script>{{ .Content | safeJS }}</script>
   {{ end }}
 {{ end }}

@@ -22,6 +22,25 @@ bookToc: true
 | **Domains** | 7 domains (weighted per real exam) |
 
 ---
+<div class="exam-controls">
+  <div class="exam-timer" data-minutes="60" data-test-id="exam-test-1">
+    <div class="timer-face">
+      <span class="timer-minutes">60</span>
+      <span class="timer-separator">:</span>
+      <span class="timer-seconds">00</span>
+    </div>
+    <div class="timer-controls">
+      <button class="timer-btn timer-start">▶ Start</button>
+      <button class="timer-btn timer-pause">⏸ Pause</button>
+      <button class="timer-btn timer-reset">↺ Reset</button>
+    </div>
+    <span class="timer-status">Time Remaining</span>
+  </div>
+  <div class="exam-progress-check">
+    <input type="checkbox" class="test-complete-check" id="test-complete-1" data-test-id="exam-test-1">
+    <label for="test-complete-1">✓ Mark test as completed</label>
+  </div>
+</div>
 
 ## 1. Infrastructure as Code (Q1–Q7)
 
