@@ -187,6 +187,7 @@
     var count = getTestCompletionCount();
     var total = getTotalTests();
     var pct = total > 0 ? Math.round((count / total) * 100) : 0;
+    var chStats = getChapterStats();
 
     // Update the navbar/progress bar if present
     var bar = document.getElementById('exam-progress-bar');
@@ -198,6 +199,27 @@
     if (text) {
       text.textContent = count + ' of ' + total + ' tests completed';
     }
+
+    // Update sidebar progress bar
+    updateSidebarProgress(chStats, count, total);
+  }
+
+  function updateSidebarProgress(chStats, testCount, testTotal) {
+    var fill = document.getElementById('sidebar-progress-fill');
+    var pctEl = document.getElementById('sidebar-progress-pct');
+    var chEl = document.getElementById('sidebar-progress-chapters');
+    var testEl = document.getElementById('sidebar-progress-tests');
+
+    if (!fill) return; // sidebar not present on this page
+
+    var totalItems = chStats.total + testTotal;
+    var doneItems = chStats.completed + testCount;
+    var pct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0;
+
+    fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (chEl) chEl.textContent = chStats.completed + '/' + chStats.total + ' chapters';
+    if (testEl) testEl.textContent = testCount + '/' + testTotal + ' tests';
   }
 
   // Handle checkbox clicks for test completion
@@ -510,6 +532,14 @@
   }
 
   // ── Auto-init on page load ──
+  // ── Export helpers for sidebar progress ──
+  window.refreshSidebarProgress = function () {
+    var chStats = getChapterStats();
+    var testStats = getTestStats();
+    updateSidebarProgress(chStats, testStats.completed, testStats.total);
+  };
+
+  // ── Auto-init on page load ──
   function autoInit() {
     // Restore test checkbox states
     initTestProgress();
@@ -521,6 +551,11 @@
     if (document.getElementById('exam-dashboard-app')) {
       initExamDashboard();
     }
+
+    // Update sidebar progress bar
+    var chStats = getChapterStats();
+    var testStats = getTestStats();
+    updateSidebarProgress(chStats, testStats.completed, testStats.total);
   }
 
   if (document.readyState === 'loading') {

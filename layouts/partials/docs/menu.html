@@ -1,0 +1,36 @@
+<nav>
+{{ partial "docs/brand" . }}
+{{ partial "docs/search" . }}
+{{ if hugo.IsMultilingual }}
+  {{ partial "docs/languages" . }}
+{{ end }}
+
+<!-- Sidebar Progress Bar -->
+<div class="sidebar-progress" id="sidebar-progress">
+  <div class="sidebar-progress-header">
+    <span class="sidebar-progress-label">📊 Progress</span>
+    <span class="sidebar-progress-pct" id="sidebar-progress-pct">0%</span>
+  </div>
+  <div class="sidebar-progress-track">
+    <div class="sidebar-progress-fill" id="sidebar-progress-fill" style="width:0%;"></div>
+  </div>
+  <div class="sidebar-progress-detail" id="sidebar-progress-detail">
+    <span id="sidebar-progress-chapters">0/17 chapters</span>
+    <span id="sidebar-progress-tests">0/7 tests</span>
+  </div>
+</div>
+
+{{ partial "docs/inject/menu-before" . }}
+{{ partial "docs/menu-hugo" (dict "Page" .Page "Menu" .Site.Menus.before) }}
+
+{{ partial "docs/menu-filetree" . }}
+
+{{ partial "docs/menu-hugo" (dict "Page" .Page "Menu" .Site.Menus.after) }}
+{{ partial "docs/inject/menu-after" . }}
+</nav>
+
+<!-- Restore menu position as soon as possible to avoid flickering -->
+{{ $script := resources.Get "menu-reset.js" | resources.Minify }}
+{{ with $script.Content }}
+  <script>{{ . | safeJS }}</script>
+{{ end }}
