@@ -39,13 +39,13 @@
 </html>
 
 {{ define "menu-container" }}
+<div class="book-sidebar-toggle">
+  <label for="menu-control" role="button" class="sidebar-toggle-label" title="Toggle sidebar">
+    <span class="sidebar-toggle-icon">◀</span>
+  </label>
+</div>
 <aside class="book-menu">
   <label for="menu-control" class="book-menu-collapse-target" title="Expand sidebar" aria-label="Expand sidebar"></label>
-  <div class="book-sidebar-toggle">
-    <label for="menu-control" role="button" class="sidebar-toggle-label" title="Toggle sidebar">
-      <span class="sidebar-toggle-icon">◀</span>
-    </label>
-  </div>
   <div class="book-menu-content">
     {{ template "menu" . }}
   </div>
@@ -106,13 +106,13 @@
 
 {{ define "toc-container" }}
   {{ if partial "docs/toc-show" . }}
+  <div class="book-toc-toggle">
+    <label for="toc-control" role="button" class="toc-toggle-label" title="Toggle table of contents">
+      <span class="toc-toggle-icon">▶</span>
+    </label>
+  </div>
   <aside class="book-toc">
     <label for="toc-control" class="book-toc-collapse-target" title="Expand table of contents" aria-label="Expand table of contents"></label>
-    <div class="book-toc-toggle">
-      <label for="toc-control" role="button" class="toc-toggle-label" title="Toggle table of contents">
-        <span class="toc-toggle-icon">▶</span>
-      </label>
-    </div>
     <div class="book-toc-content">
       {{ template "toc" . }}
     </div>
