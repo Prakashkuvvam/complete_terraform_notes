@@ -36,7 +36,18 @@ bookToc: true
 - [Scenario 10: Migration from CloudFormation](#1710-migration-from-cloudformation)
 - [Scenario 11: Multi-Team Collaboration](#1711-multi-team-collaboration)
 - [Scenario 12: Handling Large Infrastructure Changes](#1712-handling-large-infrastructure-changes)
-- [Scenario 13: Additional Real-World Scenario Questions — Solutions & Code](#1713-additional-real-world-scenario-questions--solutions--code-)
+- [Scenario 13: State Lock Nightmare](#1713-state-lock-nightmare-)
+- [Scenario 14: Accidental Terraform Destroy](#1714-accidental-terraform-destroy-)
+- [Scenario 15: Secrets in State File](#1715-secrets-in-state-file-)
+- [Scenario 16: The Workspace Strategy](#1716-the-workspace-strategy-)
+- [Scenario 17: Importing Hand-Rolled Infrastructure](#1717-importing-hand-rolled-infrastructure-)
+- [Scenario 18: Terraform Version Upgrade](#1718-terraform-version-upgrade-)
+- [Scenario 19: Module Registry Dependency Paradox](#1719-module-registry-dependency-paradox-)
+- [Scenario 20: Count vs For_Each Migration](#1720-count-vs-foreach-migration-)
+- [Scenario 21: CI/CD Pipeline Failures](#1721-cicd-pipeline-failures-)
+- [Scenario 22: Remote State Sharing Between Teams](#1722-remote-state-sharing-between-teams-)
+- [Scenario 23: Failed Apply Recovery](#1723-failed-apply-recovery-)
+- [Scenario 24: Terraform Cloud Migration](#1724-terraform-cloud-migration-)
 
 ---
 
@@ -2294,15 +2305,7 @@ Use this template for any infrastructure emergency:
 
 ---
 
----
-
-## 17.13 Additional Real-World Scenario Questions — Solutions & Code 🧠
-
-> **The following scenarios build on the questions from section 17.13. Each now includes detailed solutions with HCL code, CLI commands, and architectural guidance. Solutions that are already covered in scenarios 1–12 above are cross-referenced directly.**
-
----
-
-### 🔒 Scenario 1: State Lock Nightmare
+## 17.13 State Lock Nightmare 🔒
 
 **Problem:** `terraform apply` fails midway with a state lock error, but nobody on your team is running Terraform.
 
@@ -2394,86 +2397,7 @@ resource "aws_instance" "web" {
 
 ---
 
-### 📦 Scenario 2: The Module Refactoring Trap
-
-**Problem:** Refactoring a monolithic config into modules threatens to destroy/recreate production resources.
-
-**✅ Full solution already covered in [Scenario 6: Module Refactoring at Scale](#176-module-refactoring-at-scale).**
-
-**Key commands:**
-```bash
-# Use moved blocks (Terraform v1.1+)
-moved {
-  from = aws_vpc.main
-  to   = module.networking.aws_vpc.this
-}
-
-# Alternative: terraform state mv
-terraform state mv \
-  aws_instance.web \
-  module.compute.aws_instance.web
-```
-
-**Golden rule:** Always run `terraform plan` after adding `moved` blocks. It should show **no changes**. Only then remove old resource blocks.
-
----
-
-### 🌍 Scenario 3: Multi-Region Deployment Gone Wrong
-
-**Problem:** Using provider aliases across 3 regions, but `data.aws_ip_ranges.cloudfront` only returns data for the current provider region.
-
-**✅ Full solution covered in [Scenario 2: Multi-Region Deployment](#172-multi-region-deployment).**
-
-**Key fix for the IP ranges issue:**
-```hcl
-# Use explicit provider aliases and separate data source calls
-provider "aws" {
-  alias  = "us_east"
-  region = "us-east-1"
-}
-
-provider "aws" {
-  alias  = "eu_west"
-  region = "eu-west-1"
-}
-
-data "aws_ip_ranges" "us_east" {
-  provider  = aws.us_east
-  regions   = ["us-east-1"]
-  services  = ["cloudfront"]
-}
-
-data "aws_ip_ranges" "eu_west" {
-  provider  = aws.eu_west
-  regions   = ["eu-west-1"]
-  services  = ["cloudfront"]
-}
-
-# Then reference the specific data source for each region's security group
-resource "aws_security_group_rule" "cloudfront_https_us" {
-  provider   = aws.us_east
-  type       = "ingress"
-  from_port  = 443
-  to_port    = 443
-  protocol   = "tcp"
-  cidr_blocks = data.aws_ip_ranges.us_east.cidr_blocks
-  security_group_id = aws_security_group.web_us.id
-}
-
-resource "aws_security_group_rule" "cloudfront_https_eu" {
-  provider   = aws.eu_west
-  type       = "ingress"
-  from_port  = 443
-  to_port    = 443
-  protocol   = "tcp"
-  cidr_blocks = data.aws_ip_ranges.eu_west.cidr_blocks
-  security_group_id = aws_security_group.web_eu.id
-}
-```
-
----
-
-### 💥 Scenario 4: The Accidental `terraform destroy`
+## 17.14 Accidental Terraform Destroy 💥
 
 **Problem:** A junior engineer accidentally runs `terraform destroy` on production. It has already started.
 
@@ -2566,7 +2490,7 @@ terraform {
 
 ---
 
-### 🔑 Scenario 5: Secrets in State File
+## 17.15 Secrets in State File 🔑
 
 **Problem:** RDS passwords and other secrets are stored in plaintext in `terraform.tfstate`, shared via S3 backend.
 
@@ -2674,7 +2598,7 @@ aws s3api get-bucket-logging --bucket my-terraform-state-bucket
 
 ---
 
-### 🏗️ Scenario 6: The Workspace Strategy
+## 17.16 The Workspace Strategy 🏗️
 
 **Problem:** Growing from 1 to 3 environments (dev, staging, prod) with separate AWS accounts per environment.
 
@@ -2758,7 +2682,7 @@ cd envs/prod && terraform apply -auto-approve  # Need different AWS creds
 
 ---
 
-### 🔄 Scenario 7: Importing Hand-Rolled Infrastructure
+## 17.17 Importing Hand-Rolled Infrastructure 🔄
 
 **Problem:** 200+ AWS resources created manually over 2 years need to be brought under Terraform management.
 
@@ -2860,7 +2784,7 @@ resource "aws_security_group" "app" {
 
 ---
 
-### ⬆️ Scenario 8: The Terraform Version Upgrade
+## 17.18 Terraform Version Upgrade ⬆️
 
 **Problem:** Upgrading from Terraform 0.12 + AWS provider v3.0 to Terraform 1.10+ + AWS provider v5.x across 50+ modules (30K+ lines of HCL).
 
@@ -2996,43 +2920,7 @@ terraform plan  # Should show no changes
 
 ---
 
-### 📊 Scenario 9: Drift Detection Strategy
-
-**Problem:** QA team manually modifies ASG capacities via console during load tests. `terraform plan` wants to reset them.
-
-**✅ Full solution covered in [Scenario 4: Drift Detection & Remediation](#174-drift-detection--remediation).**
-
-**Additional approach for expected-drift resources:**
-```hcl
-# For ASG min/max/desired that legitimately change outside Terraform
-resource "aws_autoscaling_group" "app" {
-  # ... config
-
-  # Use ignore_changes for attributes that may change dynamically
-  lifecycle {
-    ignore_changes = [
-      desired_capacity,  # Changed by auto-scaling / manual tests
-      min_size,
-      max_size,
-    ]
-  }
-}
-
-# Better approach: Use a separate mechanism for scaling
-# Don't manage ASG capacities in Terraform at all
-# Use Application Auto Scaling instead
-resource "aws_appautoscaling_target" "app" {
-  max_capacity       = 10
-  min_capacity       = 1
-  resource_id        = "asg/${aws_autoscaling_group.app.name}"
-  scalable_dimension = "autoscaling:autoScalingGroup:DesiredCapacity"
-  service_namespace  = "ec2"
-}
-```
-
----
-
-### 🔗 Scenario 10: The Module Registry Dependency Paradox
+## 17.19 Module Registry Dependency Paradox 🔗
 
 **Problem:** `terraform-aws-modules/vpc/aws` v5.0.0 requires AWS provider >= 4.0, but security mandates AWS provider ~> 3.0.
 
@@ -3114,7 +3002,7 @@ module "vpc" {
 
 ---
 
-### 🔢 Scenario 11: Count vs For_Each Migration
+## 17.20 Count vs For_Each Migration 🔢
 
 **Problem:** Resources created with `count` that shift indices when list items are removed, causing unintended recreations.
 
@@ -3220,7 +3108,7 @@ terraform plan
 
 ---
 
-### ⚙️ Scenario 12: The CI/CD Pipeline That Keeps Failing
+## 17.21 CI/CD Pipeline Failures ⚙️
 
 **Problem:** GitHub Actions pipeline fails intermittently with "Inconsistent dependency lock file" and "can't find backend" errors.
 
@@ -3313,7 +3201,7 @@ git add .terraform.lock.hcl
 
 ---
 
-### 🤝 Scenario 13: Remote State Sharing Between Teams
+## 17.22 Remote State Sharing Between Teams 🤝
 
 **Problem:** Team A manages VPC, Team B needs EC2 in that VPC, Team C manages security groups. All in different AWS accounts.
 
@@ -3417,7 +3305,7 @@ resource "aws_instance" "web" {
 
 ---
 
-### 🩹 Scenario 14: The Failed Apply Recovery
+## 17.23 Failed Apply Recovery 🩹
 
 **Problem:** `terraform apply` created an S3 bucket but failed when creating a Lambda that depends on the IAM role (which hadn't propagated yet). The state now has the S3 bucket but not the Lambda.
 
@@ -3523,7 +3411,7 @@ resource "terraform_data" "state_check" {
 
 ---
 
-### ☁️ Scenario 15: Terraform Cloud Migration
+## 17.24 Terraform Cloud Migration ☁️
 
 **Problem:** Migrating from S3 + DynamoDB backend to Terraform Cloud/Enterprise.
 
@@ -3666,130 +3554,4 @@ Week 4: Decommission S3 backend, revoke DynamoDB lock table
 
 ---
 
-> 💡 **Quick tip:** For scenarios 2, 3, and 9 — detailed solutions already exist earlier in this chapter.
-
----
-
-*Remember: In real-world scenarios, the quality of your solution matters more than speed. Take time to understand the problem before implementing changes.*
-
----
-
-### 🎯 Scenario 7: Importing Hand-Rolled Infrastructure
-
-Your company has 200+ AWS resources that were manually created over 2 years through the console. You're tasked with bringing everything under Terraform management.
-
-**Questions to consider:**
-- How do you discover and inventory all existing resources?
-- What's the order of operations for importing without downtime?
-- How do you write the Terraform configuration to match each resource's exact current state?
-- What tools exist to automate bulk imports?
-- How do you handle resources with complex interdependencies?
-
----
-
-### 🎯 Scenario 8: The Terraform Version Upgrade
-
-Your team is stuck on Terraform 0.12 with the AWS provider v3.0. You need to upgrade to Terraform 1.10+ and AWS provider v5.x. The codebase has 50+ modules and 30,000+ lines of HCL.
-
-**Questions to consider:**
-- How do you plan a safe upgrade across major versions?
-- What are the known breaking changes between 0.12 → 1.x and AWS provider v3 → v5?
-- What's your testing and validation strategy?
-- How do you handle the upgrade in a team environment with multiple in-flight changes?
-- What's your rollback strategy if the upgrade breaks something?
-
----
-
-### 🎯 Scenario 9: Drift Detection Strategy
-
-Someone has been manually modifying your auto-scaling group's desired/min/max capacity through the AWS console during load tests. `terraform plan` keeps wanting to reset these values, causing friction between the DevOps and QA teams.
-
-**Questions to consider:**
-- How do you detect and report drift automatically?
-- How do you decide which manual changes to accept vs override?
-- How do you handle resources that are *expected* to change outside Terraform (ASG scaling, tags)?
-- What tooling can help with drift remediation pipeline?
-- How do you balance Terraform control vs operational flexibility?
-
----
-
-### 🎯 Scenario 10: The Module Registry Dependency Paradox
-
-Your Terraform configuration uses `terraform-aws-modules/vpc/aws` v5.0.0 which requires AWS provider >= 4.0. Your security team mandates AWS provider ~> 3.0 for compliance reasons you can't bypass.
-
-**Questions to consider:**
-- How do you resolve this version conflict?
-- What options exist for using the module without the dependency conflict?
-- Can you fork the module and downgrade it?
-- What are the security implications of this decision?
-- How would you document the exception for auditors?
-
----
-
-### 🎯 Scenario 11: Count vs For_Each Migration
-
-Your predecessor used `count` on a list of subnet IDs to create EC2 instances. Now you need to remove one subnet from the middle of the list. Due to index shifting, removing it will recreate all subsequent instances.
-
-**Questions to consider:**
-- How do you migrate from `count` to `for_each` without destroying and recreating resources?
-- What state manipulation is required?
-- How do you test the migration in a non-production environment first?
-- What happens to the state file during the migration?
-- How would you automate this for 100+ instances?
-
----
-
-### 🎯 Scenario 12: The CI/CD Pipeline That Keeps Failing
-
-Your GitHub Actions pipeline runs `terraform plan` on every PR. It fails intermittently with "Error: Inconsistent dependency lock file" while other times it fails because `terraform init` can't find the backend. The failures seem random.
-
-**Questions to consider:**
-- What's likely causing the inconsistent lock file errors?
-- Why would `terraform init` fail randomly to find the backend?
-- How do you debug CI/CD issues when they're not reproducible locally?
-- What CI/CD best practices for Terraform would prevent these issues?
-- How should the pipeline cache `.terraform` directory and provider plugins?
-
----
-
-### 🎯 Scenario 13: Remote State Sharing Between Teams
-
-Team A manages the VPC via Terraform (state in S3). Team B needs to deploy EC2 instances into that VPC. Team C manages security groups. All teams work in different AWS accounts.
-
-**Questions to consider:**
-- How do you set up cross-team, cross-account `terraform_remote_state` access?
-- What IAM permissions are needed for Team B to read Team A's state file?
-- How do you handle the coupling when Team A restructures their outputs?
-- What's a better alternative to `terraform_remote_state` for cross-team sharing?
-- How do you version and communicate state output changes between teams?
-
----
-
-### 🎯 Scenario 14: The Failed Apply Recovery
-
-Your `terraform apply` successfully creates an S3 bucket but fails when trying to create a Lambda function that depends on it (IAM role hadn't propagated yet). The state file now has the S3 bucket but not the Lambda. Your infrastructure is in a partial state.
-
-**Questions to consider:**
-- How do you safely recover from partial apply?
-- Do you manually clean the S3 bucket from state, or fix the IAM and re-apply?
-- What are the risks of each recovery approach?
-- How would you design the configuration to minimize blast radius of partial failures?
-- What monitoring would help detect partial apply states?
-
----
-
-### 🎯 Scenario 15: Terraform Cloud Migration
-
-You currently use S3 + DynamoDB as your backend. Leadership wants to move to Terraform Cloud/Enterprise for better RBAC, policy enforcement, and run workflows.
-
-**Questions to consider:**
-- How do you migrate existing state from S3 to Terraform Cloud without downtime?
-- How does the migration affect your existing CI/CD pipelines?
-- What changes to team workflow will be required?
-- How do you handle the transition period where some teams are on TFC and others are still on S3?
-- What are the cost implications and how do you estimate them?
-
----
-
-> 💡 **Quick tip:** For scenarios 2, 3, and 9 — detailed solutions already exist earlier in this chapter. The solutions below provide the full treatment for all scenarios.
 
