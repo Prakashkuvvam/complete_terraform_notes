@@ -272,6 +272,29 @@ terraform force-unlock LOCK_ID
 # CAUTION: Only use when you're sure no other process is using state
 ```
 
+### State Transitions (Visual Diagram)
+
+The diagram below shows the full lifecycle of Terraform state — from initialization through planning, applying (with locking and provisioning), to destruction:
+
+{{< mermaid >}}
+stateDiagram-v2
+    [*] --> Initialized: terraform init
+    Initialized --> Planned: terraform plan
+    Planned --> Applying: terraform apply
+    Applying --> Locked: Acquire DynamoDB lock
+    Locked --> Creating: Execute create/update
+    Creating --> WritingState: Resources provisioned
+    WritingState --> Unlocked: Write to S3 + release lock
+    Unlocked --> Planned: terraform plan (modify)
+    Unlocked --> Destroying: terraform destroy
+    Destroying --> CleaningState: Resources deleted
+    CleaningState --> [*]: State cleared
+    Unlocked --> [*]: (idle)
+
+    note right of Locked: Prevents concurrent<br/>state modifications
+    note right of Creating: resources = create,<br/>update, or delete
+{{< /mermaid >}}
+
 ---
 
 ## 6.5 State File Management

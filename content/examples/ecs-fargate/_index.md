@@ -9,18 +9,55 @@ weight: 40
 
 ## Architecture
 
-```
-┌──────────┐     ┌──────────┐     ┌─────────────────┐
-│  ALB      │────▶│  ECS      │────▶│  Fargate Tasks   │
-│  (Public) │     │  Service  │     │  (Private Subnet)│
-└──────────┘     └──────────┘     └─────────────────┘
-                      │                      │
-                      ▼                      ▼
-              ┌──────────────┐     ┌─────────────────┐
-              │  Auto Scaling │     │  CloudWatch Logs │
-              │  (CPU-based)  │     │  (/ecs/fargate) │
-              └──────────────┘     └─────────────────┘
-```
+The diagram below shows both the Terraform configuration structure and the AWS infrastructure it provisions:
+
+{{< mermaid >}}
+graph TB
+    subgraph "📄 Terraform Config"
+        A["main.tf"] --> B["VPC + Subnets"]
+        A --> C["Security Groups"]
+        A --> D["ALB + Target Group"]
+        A --> E["ECS Cluster"]
+        A --> F["Task Definition"]
+        A --> G["ECS Service"]
+        A --> H["Auto Scaling"]
+    end
+
+    subgraph "☁️ AWS Resources"
+        B --> I["Public Subnets"]
+        B --> J["Private Subnets"]
+        I --> K["Internet Gateway"]
+        I --> L["NAT Gateway"]
+        J --> L
+        D --> M["Application Load Balancer"]
+        M --> N["Listener :80"]
+        N --> O["Target Group"]
+        C --> M
+        C --> P["ECS Tasks"]
+        G --> P
+        E --> G
+        F --> P
+        H -->|"CPU > 75%"| G
+        P --> Q["CloudWatch Logs"]
+    end
+
+    subgraph "📊 Outputs"
+        M --> R["alb_dns_name"]
+        E --> S["cluster_name"]
+    end
+
+    style A fill:#e74c3c,color:#fff
+    style B fill:#3498db,color:#fff
+    style C fill:#3498db,color:#fff
+    style D fill:#3498db,color:#fff
+    style E fill:#3498db,color:#fff
+    style F fill:#3498db,color:#fff
+    style G fill:#3498db,color:#fff
+    style H fill:#3498db,color:#fff
+    style M fill:#27ae60,color:#fff
+    style P fill:#27ae60,color:#fff
+    style Q fill:#f39c12,color:#fff
+{{< /mermaid >}}
 
 ## Features
 

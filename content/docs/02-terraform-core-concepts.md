@@ -293,6 +293,86 @@ terraform state push backup.tfstate
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Terraform Workflow + AWS Infrastructure (Visual Overview)
+
+The diagram below shows the end-to-end flow — from developer commands to AWS resource provisioning to state management:
+
+{{< mermaid >}}
+graph TB
+    subgraph "👨‍💻 Developer"
+        A["terraform init"] --> B["terraform plan -out=plan.tfplan"]
+        B --> C["review output"]
+        C --> D["terraform apply plan.tfplan"]
+    end
+
+    subgraph "☁️ AWS Infrastructure"
+        D --> E["API Gateway REST API"]
+        D --> F["Lambda Function (Node.js)"]
+        D --> G["DynamoDB Table"]
+        E --> H["GET /items"]
+        E --> I["POST /items"]
+        E --> J["DELETE /items/{id}"]
+        F --> K["CRUD Operations"]
+        K --> G
+    end
+
+    subgraph "💾 State Management"
+        D --> L["S3 Backend"]
+        L --> M["DynamoDB Locking"]
+        M --> N["terraform.tfstate"]
+    end
+
+    style A fill:#4a90d9,color:#fff
+    style B fill:#4a90d9,color:#fff
+    style D fill:#27ae60,color:#fff
+    style H fill:#f39c12,color:#fff
+    style I fill:#f39c12,color:#fff
+    style J fill:#f39c12,color:#fff
+{{< /mermaid >}}
+
+### Terraform Lifecycle (Sequence Diagram)
+
+The diagram below shows the detailed sequence of interactions between the developer, Terraform, state storage, AWS API, and infrastructure over the full lifecycle:
+
+{{< mermaid >}}
+sequenceDiagram
+    participant Dev as 👨‍💻 Developer
+    participant TF as Terraform
+    participant State as State (S3/DynamoDB)
+    participant AWS as AWS API
+    participant Res as Infrastructure
+
+    Dev->>TF: terraform init
+    TF->>AWS: Initialize providers
+    AWS-->>TF: Provider ready
+    TF-->>Dev: Initialized
+
+    Dev->>TF: terraform plan
+    TF->>State: Read current state
+    State-->>TF: Existing state
+    TF->>AWS: Query resources
+    AWS-->>TF: Current infra
+    TF-->>Dev: Proposed changes
+
+    Dev->>TF: terraform apply
+    TF->>State: Lock state file
+    State-->>TF: Lock acquired
+    TF->>AWS: Create/Update resources
+    AWS->>Res: Provision
+    Res-->>AWS: Resource IDs
+    AWS-->>TF: Success
+    TF->>State: Write new state
+    TF->>State: Release lock
+    TF-->>Dev: Apply complete!
+
+    Dev->>TF: terraform destroy
+    TF->>State: Lock state
+    TF->>AWS: Delete resources
+    AWS-->>TF: Resources deleted
+    TF->>State: Clear state
+    TF-->>Dev: Destroy complete!
+{{< /mermaid >}}
+
 ### `terraform destroy`
 
 ```bash
