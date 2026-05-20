@@ -36,6 +36,7 @@ bookToc: true
 - [Scenario 10: Migration from CloudFormation](#1710-migration-from-cloudformation)
 - [Scenario 11: Multi-Team Collaboration](#1711-multi-team-collaboration)
 - [Scenario 12: Handling Large Infrastructure Changes](#1712-handling-large-infrastructure-changes)
+- [Scenario 13: Additional Real-World Scenario Questions — Solutions & Code](#1713-additional-real-world-scenario-questions--solutions--code-)
 
 ---
 
@@ -2293,5 +2294,1502 @@ Use this template for any infrastructure emergency:
 
 ---
 
+---
+
+## 17.13 Additional Real-World Scenario Questions — Solutions & Code 🧠
+
+> **The following scenarios build on the questions from section 17.13. Each now includes detailed solutions with HCL code, CLI commands, and architectural guidance. Solutions that are already covered in scenarios 1–12 above are cross-referenced directly.**
+
+---
+
+### 🔒 Scenario 1: State Lock Nightmare
+
+**Problem:** `terraform apply` fails midway with a state lock error, but nobody on your team is running Terraform.
+
+#### Root Cause Investigation
+
+```bash
+# 1. Check who holds the lock (DynamoDB)
+aws dynamodb get-item \
+  --table-name terraform-locks \
+  --key '{"LockID": {"S": "my-bucket/path/to/state.tfstate-md5"}}'
+
+# 2. Check DynamoDB for all active locks
+aws dynamodb scan \
+  --table-name terraform-locks
+
+# 3. Identify the lock holder from the output
+# Look for: Digest, Who (username/CI run ID), Version
+```
+
+If the lock was acquired by a CI/CD pipeline that crashed, the lock may persist. Check your CI system for in-progress or crashed runs.
+
+#### Safe Force-Unlock Procedure
+
+```bash
+# NEVER force-unlock without investigation first!
+
+# Step 1: Check that no Terraform process is actually running
+ps aux | grep terraform
+
+# Step 2: If safe, force-unlock
+terraform force-unlock <LOCK_ID>
+
+# Step 3: Verify state integrity after unlock
+terraform plan
+```
+
+**Risks of force-unlock:** If another `terraform apply` was mid-write, you could end up with a partially written state file, leading to corruption. Always verify state integrity afterward.
+
+#### Recovery After Mid-Flight Failure
+
+If the `apply` failed partway through and the state is partially written:
+
+```bash
+# Step 1: Check state for partial writes
+terraform state list
+
+# Step 2: Look for resources that were being created
+# Compare terraform state list against your .tf files
+
+# Step 3: If S3 versioning is enabled (always should be!), check for clean state versions
+aws s3api list-object-versions \
+  --bucket my-terraform-state-bucket \
+  --prefix "path/to/terraform.tfstate"
+
+# Step 4: Restore the previous good version if needed
+aws s3api get-object \
+  --bucket my-terraform-state-bucket \
+  --key "path/to/terraform.tfstate" \
+  --version-id "PREVIOUS_CLEAN_VERSION_ID" \
+  terraform.tfstate.clean
+
+# Step 5: Re-apply or import the partially-created resources
+grep -f <(terraform state list) <(terraform plan -no-color) | grep "will be created"
+# Import any resources that were created before the failure
+terraform import aws_s3_bucket.data my-existing-bucket
+```
+
+#### Prevention
+
+```bash
+# Enable DynamoDB locking in backend config
+terraform {
+  backend "s3" {
+    bucket         = "my-terraform-state-bucket"
+    key            = "path/to/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-locks"  # ← Critical!
+  }
+}
+
+# Set lock timeout to auto-retry
+resource "aws_instance" "web" {
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+---
+
+### 📦 Scenario 2: The Module Refactoring Trap
+
+**Problem:** Refactoring a monolithic config into modules threatens to destroy/recreate production resources.
+
+**✅ Full solution already covered in [Scenario 6: Module Refactoring at Scale](#176-module-refactoring-at-scale).**
+
+**Key commands:**
+```bash
+# Use moved blocks (Terraform v1.1+)
+moved {
+  from = aws_vpc.main
+  to   = module.networking.aws_vpc.this
+}
+
+# Alternative: terraform state mv
+terraform state mv \
+  aws_instance.web \
+  module.compute.aws_instance.web
+```
+
+**Golden rule:** Always run `terraform plan` after adding `moved` blocks. It should show **no changes**. Only then remove old resource blocks.
+
+---
+
+### 🌍 Scenario 3: Multi-Region Deployment Gone Wrong
+
+**Problem:** Using provider aliases across 3 regions, but `data.aws_ip_ranges.cloudfront` only returns data for the current provider region.
+
+**✅ Full solution covered in [Scenario 2: Multi-Region Deployment](#172-multi-region-deployment).**
+
+**Key fix for the IP ranges issue:**
+```hcl
+# Use explicit provider aliases and separate data source calls
+provider "aws" {
+  alias  = "us_east"
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "eu_west"
+  region = "eu-west-1"
+}
+
+data "aws_ip_ranges" "us_east" {
+  provider  = aws.us_east
+  regions   = ["us-east-1"]
+  services  = ["cloudfront"]
+}
+
+data "aws_ip_ranges" "eu_west" {
+  provider  = aws.eu_west
+  regions   = ["eu-west-1"]
+  services  = ["cloudfront"]
+}
+
+# Then reference the specific data source for each region's security group
+resource "aws_security_group_rule" "cloudfront_https_us" {
+  provider   = aws.us_east
+  type       = "ingress"
+  from_port  = 443
+  to_port    = 443
+  protocol   = "tcp"
+  cidr_blocks = data.aws_ip_ranges.us_east.cidr_blocks
+  security_group_id = aws_security_group.web_us.id
+}
+
+resource "aws_security_group_rule" "cloudfront_https_eu" {
+  provider   = aws.eu_west
+  type       = "ingress"
+  from_port  = 443
+  to_port    = 443
+  protocol   = "tcp"
+  cidr_blocks = data.aws_ip_ranges.eu_west.cidr_blocks
+  security_group_id = aws_security_group.web_eu.id
+}
+```
+
+---
+
+### 💥 Scenario 4: The Accidental `terraform destroy`
+
+**Problem:** A junior engineer accidentally runs `terraform destroy` on production. It has already started.
+
+#### Immediate Response
+
+```bash
+# OPTION 1: Kill the process immediately (works if running locally)
+# Find the PID
+ps aux | grep "terraform destroy"
+# Kill it
+kill -9 <PID>
+
+# OPTION 2: Kill CI/CD run (GitHub Actions)
+gh run cancel <RUN_ID>
+
+# OPTION 3: If using Terraform Cloud, cancel the run in UI
+```
+
+#### Assess Damage
+
+```bash
+# After stopping mid-destroy, state may be inconsistent:
+# Some resources destroyed but not removed from state, or vice versa
+export TF_LOG=DEBUG
+export TF_LOG_PATH=./tf-destroy.log
+grep "destroying" tf-destroy.log | grep -v "complete"
+
+# List what's still in state
+terraform state list
+
+# Compare with what should exist
+terraform plan
+```
+
+#### Recovery
+
+```bash
+# Step 1: If resources were destroyed but remain in state, remove them
+terraform state rm aws_instance.web
+
+# Step 2: If resources were destroyed AND removed from state, re-create
+terraform apply -target=aws_instance.web
+
+# Step 3: Re-import any resources that were partially deleted
+terraform import aws_s3_bucket.data my-bucket
+```
+
+#### Guardrails to Prevent Recurrence
+
+```hcl
+# 1. Preventative lifecycle — prevent destroy on critical resources
+resource "aws_db_instance" "prod" {
+  # ... config
+
+  lifecycle {
+    prevent_destroy = true  # ❌ Destroy will fail
+  }
+}
+
+# 2. IAM policy — deny terraform destroy in production
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Deny",
+      "Action": ["s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::prod-terraform-state/*"],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    }
+  ]
+}
+
+# 3. CI/CD pipeline — never auto-approve destroy
+# In GitHub Actions:
+# - Only use terraform destroy via manual workflow_dispatch with confirmation
+# - Require 2-person approval for destroy jobs
+
+# 4. Separate AWS accounts — destroy in dev doesn't affect prod
+# Use different backends per environment
+terraform {
+  backend "s3" {
+    bucket = "${var.environment}-terraform-state"  # Different bucket per env
+  }
+}
+```
+
+---
+
+### 🔑 Scenario 5: Secrets in State File
+
+**Problem:** RDS passwords and other secrets are stored in plaintext in `terraform.tfstate`, shared via S3 backend.
+
+#### Immediate Containment
+
+```bash
+# Step 1: Rotate ALL exposed secrets immediately
+aws rds modify-db-instance \
+  --db-instance-identifier mydb \
+  --master-user-password "$(openssl rand -base64 24)" \
+  --apply-immediately
+
+# Step 2: Encrypt the state in S3 if not already
+aws s3api put-bucket-encryption \
+  --bucket my-terraform-state-bucket \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+      }
+    }]
+  }'
+
+# Step 3: Restrict S3 bucket access
+aws s3api put-bucket-policy \
+  --bucket my-terraform-state-bucket \
+  --policy '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::my-terraform-state-bucket/*",
+      "Condition": {
+        "Bool": {"aws:SecureTransport": "false"}
+      }
+    }]
+  }'
+```
+
+#### Long-term Solution — Use Secrets Manager
+
+```hcl
+# Store secrets externally, never in .tf files
+resource "random_password" "db" {
+  length  = 24
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "db_pass" {
+  name = "${var.environment}/db/password"
+}
+
+resource "aws_secretsmanager_secret_version" "db_pass" {
+  secret_id     = aws_secretsmanager_secret.db_pass.id
+  secret_string = random_password.db.result
+}
+
+# Reference secret from RDS (RDS supports Secrets Manager natively)
+resource "aws_db_instance" "main" {
+  # Instead of master_password = var.db_password
+  # Use the Secrets Manager ARN (RDS can auto-rotate)
+  master_user_secret {
+    kms_key_id = aws_kms_key.rds.arn
+  }
+}
+
+# Mark sensitive output as sensitive
+output "db_endpoint" {
+  value     = aws_db_instance.main.endpoint
+  sensitive = true  # Won't appear in plaintext plan output
+}
+```
+
+#### Prevent Secrets from Appearing in State
+
+```hcl
+# Mark variables as sensitive
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+
+# Use the sensitive() function for values
+resource "aws_ssm_parameter" "db_pass" {
+  name  = "/${var.environment}/db/password"
+  type  = "SecureString"
+  value = sensitive(random_password.db.result)  # Marked sensitive
+}
+```
+
+**Important caveat:** Even with `sensitive = true`, the value still appears in the **raw state file** in S3. The only way to fully exclude secrets from state is to **never pass them through Terraform at all** — use an external secrets manager and reference it at runtime, not at deploy time.
+
+#### Audit Exposure
+
+```bash
+# Check CloudTrail for state file access
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=ResourceName,AttributeValue=my-terraform-state-bucket \
+  --start-time "2024-01-01T00:00:00Z"
+
+# Check S3 access logs
+aws s3api get-bucket-logging --bucket my-terraform-state-bucket
+```
+
+---
+
+### 🏗️ Scenario 6: The Workspace Strategy
+
+**Problem:** Growing from 1 to 3 environments (dev, staging, prod) with separate AWS accounts per environment.
+
+#### Strategy Comparison
+
+| Criteria | Workspaces | Separate Directories | Separate Repos |
+|----------|------------|---------------------|----------------|
+| **State isolation** | ✅ Shared backend | ✅ Full isolation | ✅ Full isolation |
+| **Code sharing** | ✅ Single source | ✅ Symlinks/modules | ❌ Duplication |
+| **Multi-account** | ❌ Single backend | ✅ Separate backends | ✅ Separate backends |
+| **Access control** | ❌ Single IAM role/workspace | ✅ Per-directory | ✅ Per-repo |
+| **Complexity** | 🟢 Low | 🟡 Medium | 🔴 High |
+| **Rollback** | ✅ Simple | ✅ Simple | ❌ Cross-repo sync needed |
+| **Team of 5** | 🟡 OK | ✅ Recommended | ❌ Overkill |
+
+#### Recommended Approach for Multi-Account
+
+```
+terraform/
+├── org/
+│   └── iam/
+│       ├── main.tf          # Organizations, SCPs
+│       └── backend.tf
+├── envs/
+│   ├── dev/
+│   │   ├── main.tf          # module references only
+│   │   ├── backend.tf       # dev-specific S3 backend
+│   │   └── terraform.tfvars
+│   ├── staging/
+│   │   ├── main.tf
+│   │   ├── backend.tf
+│   │   └── terraform.tfvars
+│   └── prod/
+│       ├── main.tf
+│       ├── backend.tf
+│       └── terraform.tfvars
+└── modules/
+    ├── vpc/
+    ├── ecs/
+    └── rds/
+```
+
+#### Variable Handling Per Environment
+
+```hcl
+# envs/dev/terraform.tfvars
+aws_region     = "us-east-1"
+vpc_cidr       = "10.0.0.0/16"
+instance_count = 1
+instance_type  = "t3.small"
+environment    = "dev"
+
+# envs/prod/terraform.tfvars
+aws_region     = "us-east-1"
+vpc_cidr       = "10.0.0.0/16"
+instance_count = 5
+instance_type  = "m5.large"
+environment    = "prod"
+```
+
+#### Secrets Per Environment
+
+```bash
+# Each env uses a different AWS account/different secret
+# dev uses dev secrets, prod uses prod secrets
+
+# Automate apply per environment
+cd envs/dev && terraform apply -auto-approve
+cd envs/prod && terraform apply -auto-approve  # Need different AWS creds
+```
+
+#### Key Decision Matrix
+
+| If you have... | Use... |
+|---------------|--------|
+| Single AWS account, small team | Workspaces (simple) |
+| Multi-account, 3-5 environments | **Separate directories** ✅ |
+| Multi-team, 15+ environments | Separate repos with module registry |
+
+> **Recommendation for a startup with separate AWS accounts:** Use **separate directories** per environment. Each env has its own `backend.tf` pointing to S3 in that environment's AWS account. The `modules/` directory is shared as a local path source. This scales well, gives full isolation, and is simple enough for a team of 5.
+
+---
+
+### 🔄 Scenario 7: Importing Hand-Rolled Infrastructure
+
+**Problem:** 200+ AWS resources created manually over 2 years need to be brought under Terraform management.
+
+#### Discovery & Inventory
+
+```bash
+# Option 1: Use AWS Resource Explorer
+aws resource-explorer-2 search \
+  --query-string "resourcetype:ec2:instance" \
+  --region us-east-1
+
+# Option 2: Use AWS Config aggregator
+aws configservice select-resource-config \
+  --expression "SELECT resourceId, resourceType, tags WHERE resourceType = 'AWS::EC2::Instance'"
+
+# Option 3: Generate Terraform config from existing resources using terraformer
+# terraformer is the best tool for this:
+terformer import aws --resources="*" --regions=us-east-1
+
+# This generates .tf files and state for ALL resources in the region!
+
+# Option 4: Use terraforming (alternative tool)
+terraf import aws --resources ec2,vpc,s3 --regions us-east-1
+```
+
+#### Bulk Import Strategy
+
+```hcl
+# terraformer approach (recommended because it generates both .tf AND state)
+# Install: https://github.com/GoogleCloudPlatform/terraformer
+
+# Step 1: Generate Terraform config from existing resources
+terformer import aws \
+  --resources="vpc,ec2,rds,s3,iam,lambda,ecs,elb" \
+  --regions="us-east-1" \
+  --profile=my-profile
+
+# This creates:
+# generated/us-east-1/vpc/
+#   ├── main.tf        # Generated HCL
+#   ├── outputs.tf
+#   ├── provider.tf
+#   ├── terraform.tfstate  # Imported state!
+#   └── variables.tf
+
+# Step 2: Move generated files into your project structure
+mv generated/us-east-1/vpc/*.tf modules/vpc/
+mv generated/us-east-1/vpc/terraform.tfstate states/vpc.tfstate
+
+# Step 3: Verify with terraform plan
+cd modules/vpc && terraform init && terraform plan
+```
+
+#### Manual Import (When Tools Can't Handle It)
+
+```hcl
+# Step 1: Define the resource skeleton in .tf files
+resource "aws_instance" "web" {
+  # Start with minimal config
+  ami           = ""
+  instance_type = ""
+}
+
+# Step 2: Import
+terraform import aws_instance.web i-0abcd1234efgh5678
+
+# Step 3: Generate full config from state
+terraform show -no-color > full_config.tf
+# Extract the resource block and clean it up
+
+# Step 4: Use terraform plan to iteratively correct diffs
+terraform plan
+# Fix any attributes that differ until plan shows no changes
+```
+
+#### Order of Operations
+
+1. **Start with foundational resources** (VPC → subnets → security groups → IAM roles)
+2. **Then mid-tier resources** (ALBs, RDS, ElastiCache)
+3. **Finally compute and app-level** (EC2, ECS, Lambda)
+4. **Last: data resources** (Route53 records, SSM parameters)
+
+#### Handling Dependencies
+
+```bash
+# After importing VPC, create data sources for dependent teams
+# This way, App team's config references the VPC without importing it
+
+data "aws_vpc" "shared" {
+  tags = {
+    Name = "production-vpc"
+  }
+}
+
+resource "aws_security_group" "app" {
+  vpc_id = data.aws_vpc.shared.id
+}
+```
+
+---
+
+### ⬆️ Scenario 8: The Terraform Version Upgrade
+
+**Problem:** Upgrading from Terraform 0.12 + AWS provider v3.0 to Terraform 1.10+ + AWS provider v5.x across 50+ modules (30K+ lines of HCL).
+
+#### Upgrade Path
+
+```
+TF 0.12 → TF 0.13 → TF 0.14 → TF 0.15 → TF 1.0 → TF 1.1 → ... → TF 1.10
+AWS v3.0 → AWS v3.x → AWS v4.x → AWS v5.x
+
+NEVER jump versions directly! Each major version upgrade must be done sequentially.
+```
+
+#### Step-by-Step Migration
+
+```bash
+# ───────────────────────────────────────
+# PHASE 1: Terraform Version Upgrade
+# ───────────────────────────────────────
+
+# Step 1: Upgrade TF binary 0.12 → 0.13
+# Download TF 0.13 and run:
+terraform version  # Should show 0.13
+terraform init -upgrade
+terraform 0.13upgrade .  # Rewrites 0.12 syntax to 0.13
+terraform plan  # Should show no changes
+
+# Step 2: Upgrade TF 0.13 → 0.14
+terraform version
+terraform init -upgrade
+terraform plan  # Should show no changes
+
+# Step 3: Upgrade TF 0.14 → 0.15
+# Key change in 0.15: Terraform Registry is now default
+terraform version
+terraform init -upgrade
+terraform plan
+
+# Step 4: Upgrade TF 0.15 → 1.0
+# BIG milestone! 1.0 is backward compatible with 0.15
+terraform version
+terraform init -upgrade
+terraform plan  # Should show no changes 
+
+# Step 5: Upgrade TF 1.0 → 1.1+ (all minor versions)
+terraform version
+terraform init -upgrade
+terraform plan
+
+# ───────────────────────────────────────
+# PHASE 2: AWS Provider Upgrade
+# ───────────────────────────────────────
+
+# Step 6: Upgrade AWS provider v3 → v4
+# Key breaking changes in v4:
+# - aws_s3_bucket: many arguments moved to sub-resources
+# - aws_cloudfront_distribution: ordering changes
+# - aws_instance: metadata_options defaults changed
+
+# Update version constraint in versions.tf
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"  # From ~> 3.0
+    }
+  }
+}
+
+terraform init -upgrade
+terraform plan
+# Fix any deprecation warnings or errors
+
+# Step 7: Upgrade AWS provider v4 → v5
+# Key breaking changes in v5:
+# - Default tags: provider-level default_tags replaces resource-level tags
+# - aws_s3_bucket_object → aws_s3_object
+# - aws_eip_association: now requires allocation_id and instance_id together
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"  # From ~> 4.0
+    }
+  }
+}
+
+terraform init -upgrade
+terraform plan
+```
+
+#### Testing Strategy
+
+```bash
+# Run upgrade in dev first
+cd environments/dev
+terraform init -upgrade
+terraform plan
+
+# Use GitHub Actions to test upgrade across all modules
+# .github/workflows/upgrade-test.yml
+# 1. Checkout code
+# 2. Install target TF version
+# 3. terraform init -upgrade in each module directory
+# 4. terraform validate in each directory
+# 5. terraform plan
+```
+
+#### Rollback Strategy
+
+```bash
+# If upgrade fails:
+# 1. Revert TF binary to previous version
+# 2. Revert version.tf changes in Git
+git checkout HEAD~1 -- versions.tf
+
+# 3. Revert AWS provider plugin cache
+rm -rf .terraform
+terraform init  # With previous versions
+
+# 4. If you already applied and need to rollback state
+# Restore previous S3 version
+aws s3api get-object \
+  --bucket prod-terraform-state \
+  --key prod/terraform.tfstate \
+  --version-id "PREVIOUS_GOOD_VERSION" \
+  terraform.tfstate.bak
+git revert HEAD
+git push
+terraform init
+terraform plan  # Should show no changes
+```
+
+---
+
+### 📊 Scenario 9: Drift Detection Strategy
+
+**Problem:** QA team manually modifies ASG capacities via console during load tests. `terraform plan` wants to reset them.
+
+**✅ Full solution covered in [Scenario 4: Drift Detection & Remediation](#174-drift-detection--remediation).**
+
+**Additional approach for expected-drift resources:**
+```hcl
+# For ASG min/max/desired that legitimately change outside Terraform
+resource "aws_autoscaling_group" "app" {
+  # ... config
+
+  # Use ignore_changes for attributes that may change dynamically
+  lifecycle {
+    ignore_changes = [
+      desired_capacity,  # Changed by auto-scaling / manual tests
+      min_size,
+      max_size,
+    ]
+  }
+}
+
+# Better approach: Use a separate mechanism for scaling
+# Don't manage ASG capacities in Terraform at all
+# Use Application Auto Scaling instead
+resource "aws_appautoscaling_target" "app" {
+  max_capacity       = 10
+  min_capacity       = 1
+  resource_id        = "asg/${aws_autoscaling_group.app.name}"
+  scalable_dimension = "autoscaling:autoScalingGroup:DesiredCapacity"
+  service_namespace  = "ec2"
+}
+```
+
+---
+
+### 🔗 Scenario 10: The Module Registry Dependency Paradox
+
+**Problem:** `terraform-aws-modules/vpc/aws` v5.0.0 requires AWS provider >= 4.0, but security mandates AWS provider ~> 3.0.
+
+#### Solution Options
+
+**Option 1: Pin to an older module version that supports AWS v3**
+
+```hcl
+# Check if older module version supports AWS v3
+# terraform-aws-modules/vpc/aws v3.x supports AWS v3
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 3.0"  # Older version, compatible with AWS v3
+
+  name = "my-vpc"
+  cidr = "10.0.0.0/16"
+  azs  = ["us-east-1a", "us-east-1b", "us-east-1c"]
+}
+```
+
+**Option 2: Fork the module and downgrade it**
+
+```bash
+# Clone the module repository
+git clone https://github.com/terraform-aws-modules/terraform-aws-vpc.git
+cd terraform-aws-vpc
+
+# Checkout the last version that supported AWS v3
+git checkout tags/v3.19.0 -b aws-v3-compat
+
+# Pin the forked module
+module "vpc" {
+  source = "git::https://github.com/my-org/terraform-aws-vpc.git?ref=aws-v3-compat"
+
+  name = "my-vpc"
+  cidr = "10.0.0.0/16"
+}
+```
+
+**Option 3: Implement VPC module yourself (recommended for simple cases)**
+
+```hcl
+# For most teams, the module is overkill for a simple VPC
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name = "my-vpc"
+  }
+}
+
+resource "aws_subnet" "public" {
+  count             = 3
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet("10.0.0.0/16", 8, count.index)
+  map_public_ip_on_launch = true
+}
+```
+
+**Option 4: Exemption request (document for auditors)**
+
+```hcl
+# Document the exception in a comment
+# EXCEPTION: Module v5.0.0 requires AWS provider >= 4.0
+# Approved by: Security Team Lead (John Doe)
+# Date: 2024-01-15
+# JIRA: SEC-1234
+# Rationale: v3 provider has known CVEs that are patched in v4+
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
+
+  # ...
+}
+```
+
+---
+
+### 🔢 Scenario 11: Count vs For_Each Migration
+
+**Problem:** Resources created with `count` that shift indices when list items are removed, causing unintended recreations.
+
+#### Problem Illustration
+
+```hcl
+# Current: Using count on subnets
+variable "subnet_ids" {
+  default = ["subnet-a", "subnet-b", "subnet-c"]
+}
+
+resource "aws_instance" "web" {
+  count      = length(var.subnet_ids)
+  subnet_id  = var.subnet_ids[count.index]
+}
+
+# If we remove "subnet-a" (index 0):
+# - aws_instance.web[0] was subnet-a → now subnet-b (❗ Different resource!)
+# - aws_instance.web[1] was subnet-b → now subnet-c (❗ Different resource!)
+# - aws_instance.web[2] was subnet-c → now missing (Destroyed!)
+```
+
+#### Migration to for_each
+
+```hcl
+# Step 1: Convert variable to map
+variable "subnet_ids" {
+  type = map(string)
+  default = {
+    a = "subnet-a"
+    b = "subnet-b"
+    c = "subnet-c"
+  }
+}
+
+# Step 2: Define resources with for_each using map keys
+resource "aws_instance" "web" {
+  for_each  = var.subnet_ids
+  subnet_id = each.value
+
+  tags = {
+    Name = "web-${each.key}"
+  }
+}
+```
+
+#### State Migration
+
+```bash
+# Step 1: Add the new for_each resources alongside existing count resources
+# Step 2: Use terraform state mv to move count-indexed state to for_each keys
+
+# Map each count index to a map key
+terraform state mv \
+  aws_instance.web[0] \
+  aws_instance.web["a"]
+
+terraform state mv \
+  aws_instance.web[1] \
+  aws_instance.web["b"]
+
+terraform state mv \
+  aws_instance.web[2] \
+  aws_instance.web["c"]
+
+# Step 3: Run terraform plan — should show no changes
+terraform plan
+
+# Step 4: Remove old count-based resource block from .tf files
+# Keep only the for_each version
+
+# Step 5: Run terraform apply to update state reference
+terraform apply
+```
+
+#### Script for Bulk Migration (100+ Instances)
+
+```bash
+#!/bin/bash
+# migrate-count-to-foreach.sh
+
+# Subnet IDs to map
+declare -A SUBNET_MAP=(
+  ["0"]="subnet-a"
+  ["1"]="subnet-b"
+  ["2"]="subnet-c"
+  # ... up to 100+
+)
+
+# Move state for each
+for OLD_KEY in "${!SUBNET_MAP[@]}"; do
+  NEW_KEY="${SUBNET_MAP[$OLD_KEY]}"
+  
+  echo "Moving aws_instance.web[$OLD_KEY] → aws_instance.web[\"$NEW_KEY\"]"
+  
+  terraform state mv \
+    "aws_instance.web[$OLD_KEY]" \
+    "aws_instance.web[\"$NEW_KEY\"]"
+done
+
+terraform plan
+```
+
+---
+
+### ⚙️ Scenario 12: The CI/CD Pipeline That Keeps Failing
+
+**Problem:** GitHub Actions pipeline fails intermittently with "Inconsistent dependency lock file" and "can't find backend" errors.
+
+#### Root Causes
+
+| Error | Likely Cause | Fix |
+|-------|-------------|-----|
+| **Inconsistent dependency lock file** | `.terraform.lock.hcl` is out of sync with the version of Terraform/providers used in CI | Re-run `terraform init` in CI without cache; commit updated lock file |
+| **Can't find backend** | S3 backend configuration mismatch, or `.terraform/` cached directory contains stale state reference | Invalidate `.terraform` cache on provider/backend changes |
+| **Random failures** | Race condition with state lock, or missing `.terraform.lock.hcl` in git | `terraform init -upgrade` in CI; commit lock file |
+
+#### Solution: Proper CI/CD Caching
+
+```yaml
+# .github/workflows/terraform.yml
+name: Terraform CI
+
+on: [pull_request]
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Cache Terraform plugins
+        uses: actions/cache@v3
+        with:
+          path: |
+            .terraform
+            .terraform.lock.hcl
+          key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend=false \
+            -input=false \
+            -lockfile=readonly  # Don't modify lock file in CI
+
+      - name: Terraform Validate
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        run: |
+          terraform init -input=false
+          terraform plan -no-color
+```
+
+#### Lock File Best Practices
+
+```bash
+# Commit the .terraform.lock.hcl to git!
+git add .terraform.lock.hcl
+
+# When upgrading providers:
+# 1. Run terraform init -upgrade locally
+# 2. Review changes in lock file
+# 3. Commit lock file
+# 4. CI will use the same provider versions
+
+# Never use -upgrade in CI (it can pick different versions)
+# Instead, use -lockfile=readonly to enforce locked versions
+```
+
+#### Debugging Non-Reproducible Failures
+
+```bash
+# Add debugging to CI workflow
+- name: Debug Info
+  run: |
+    terraform version
+    cat .terraform.lock.hcl | head -30
+    ls -la .terraform/
+    aws sts get-caller-identity
+
+# Check if the issue is provider-plugin related
+- name: Init with debug
+  env:
+    TF_LOG: DEBUG
+  run: |
+    terraform init 2>&1 | tee init-debug.log
+```
+
+---
+
+### 🤝 Scenario 13: Remote State Sharing Between Teams
+
+**Problem:** Team A manages VPC, Team B needs EC2 in that VPC, Team C manages security groups. All in different AWS accounts.
+
+**✅ Cross-account approach covered in [Scenario 11: Multi-Team Collaboration](#1711-multi-team-collaboration).**
+
+**Key additions for cross-account:**
+
+```hcl
+# Team A's S3 bucket policy (allows cross-account read access)
+resource "aws_s3_bucket_policy" "state_access" {
+  bucket = "team-a-terraform-state"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::TEAM_B_ACCOUNT_ID:role/CIRole",
+            "arn:aws:iam::TEAM_C_ACCOUNT_ID:role/CIRole"
+          ]
+        }
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::team-a-terraform-state",
+          "arn:aws:s3:::team-a-terraform-state/network/*"
+        ]
+      }
+    ]
+  })
+}
+
+# Team B reads Team A's state cross-account
+data "terraform_remote_state" "vpc" {
+  backend = "s3"
+  config = {
+    bucket         = "team-a-terraform-state"
+    key            = "network/terraform.tfstate"
+    region         = "us-east-1"
+    assume_role = {
+      role_arn = "arn:aws:iam::TEAM_A_ACCOUNT_ID:role/CrossAccountStateReader"
+    }
+  }
+}
+
+# Better alternative: Use AWS Resource Access Manager or SSM Parameter Store
+# instead of terraform_remote_state for loose coupling
+
+resource "aws_ssm_parameter" "vpc_id" {
+  name  = "/network/shared/vpc-id"
+  type  = "String"
+  value = module.vpc.vpc_id
+}
+
+# Team B reads from SSM instead of Terraform state
+data "aws_ssm_parameter" "vpc_id" {
+  name = "/network/shared/vpc-id"
+}
+```
+
+#### Reduce Coupling with Structured Outputs
+
+```hcl
+# Team A publishes structured data as JSON output
+output "network_config" {
+  value = jsonencode({
+    vpc_id             = module.vpc.vpc_id
+    public_subnet_ids  = module.vpc.public_subnet_ids
+    private_subnet_ids = module.vpc.private_subnet_ids
+    security_group_ids = {
+      web      = aws_security_group.web.id
+      app      = aws_security_group.app.id
+      database = aws_security_group.database.id
+    }
+  })
+}
+
+# Team B reads it
+data "terraform_remote_state" "network" {
+  backend = "s3"
+  config = {
+    bucket = "team-a-terraform-state"
+    key    = "network/terraform.tfstate"
+  }
+}
+
+locals {
+  network = jsondecode(data.terraform_remote_state.network.outputs.network_config.value)
+}
+
+# Use:
+resource "aws_instance" "web" {
+  subnet_id = local.network.private_subnet_ids[0]
+  vpc_security_group_ids = [local.network.security_group_ids.web]
+}
+```
+
+---
+
+### 🩹 Scenario 14: The Failed Apply Recovery
+
+**Problem:** `terraform apply` created an S3 bucket but failed when creating a Lambda that depends on the IAM role (which hadn't propagated yet). The state now has the S3 bucket but not the Lambda.
+
+#### Recovery Options
+
+**Option A: Fix and re-apply (✅ Recommended)**
+
+```bash
+# Step 1: Determine why it failed (IAM propagation delay is common)
+export TF_LOG=INFO
+export TF_LOG_PATH=./tf-apply.log
+
+# Step 2: Check the S3 bucket was created successfully
+aws s3api head-bucket --bucket my-app-storage-12345
+
+# Step 3: Verify the S3 bucket is in state
+terraform state list | grep s3
+
+# Step 4: Fix the dependency issue
+# Add depends_on or explicit waiters for IAM propagation
+resource "aws_lambda_function" "app" {
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_logs,
+    # This ensures IAM role propagation completes first
+  ]
+  role = aws_iam_role.lambda.arn
+  # ...
+}
+
+# Or use an explicit time sleep resource
+resource "time_sleep" "iam_propagation" {
+  depends_on = [aws_iam_role.lambda]
+  create_duration = "30s"  # Wait 30 seconds for IAM propagation
+}
+
+resource "aws_lambda_function" "app" {
+  depends_on = [time_sleep.iam_propagation]
+}
+
+# Step 5: Re-run apply (it will only create the missing Lambda)
+terraform apply
+```
+
+**Option B: Remove S3 from state and recreate everything (❌ NOT recommended)**
+
+```bash
+# Only if the S3 bucket is empty or ephemeral
+export TF_BUCKET_NAME=$(terraform state show aws_s3_bucket.data | grep "^id" | awk '{print $3}')
+terraform state rm aws_s3_bucket.data
+aws s3 rb s3://$TF_BUCKET_NAME --force  # Delete empty bucket
+terraform apply  # Recreates everything
+```
+
+#### Prevention — Design for Partial Failures
+
+```hcl
+# 1. Break large changes into smaller, independent targets
+resource "aws_s3_bucket" "data" {
+  # ... (no explicit depends_on)
+}
+
+resource "aws_lambda_function" "app" {
+  # ...
+  depends_on = [time_sleep.iam_propagation]
+}
+
+# Apply in steps:
+# terraform apply -target=aws_s3_bucket.data -auto-approve
+# terraform apply -target=aws_lambda_function.app -auto-approve
+
+# 2. Use IAM propagation waiters
+resource "null_resource" "wait_for_iam" {
+  provisioner "local-exec" {
+    command = <<EOF
+      echo "Waiting for IAM role propagation..."
+      sleep 10  # Minimum wait
+      # Verify role exists
+      aws iam get-role --role-name ${aws_iam_role.lambda.name}
+    EOF
+  }
+}
+```
+
+#### Monitoring for Partial State
+
+```hcl
+# Add a null_resource that validates state integrity
+resource "terraform_data" "state_check" {
+  provisioner "local-exec" {
+    command = <<EOF
+      # Check that all expected resources exist in state
+      EXPECTED_RESOURCES="aws_s3_bucket.data\naws_lambda_function.app"
+      echo -e "$EXPECTED_RESOURCES" | while read resource; do
+        if ! terraform state list 2>/dev/null | grep -q "$resource"; then
+          echo "WARNING: $resource not found in state!"
+          exit 1
+        fi
+      done
+    EOF
+  }
+}
+```
+
+---
+
+### ☁️ Scenario 15: Terraform Cloud Migration
+
+**Problem:** Migrating from S3 + DynamoDB backend to Terraform Cloud/Enterprise.
+
+#### Migration Strategy
+
+```bash
+# ───────────────────────────────────────
+# PHASE 1: Set up Terraform Cloud workspace
+# ───────────────────────────────────────
+
+# Create workspace in Terraform Cloud UI or via API
+# 1. Create workspace named "prod-infrastructure"
+# 2. Configure VCS connection (GitHub)
+# 3. Set environment variables (AWS credentials via OIDC)
+
+# ───────────────────────────────────────
+# PHASE 2: Update backend configuration
+# ───────────────────────────────────────
+
+# Before (S3 backend)
+terraform {
+  backend "s3" {
+    bucket         = "my-terraform-state"
+    key            = "prod/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-locks"
+  }
+}
+
+# After (Terraform Cloud)
+terraform {
+  cloud {
+    organization = "my-company"
+    workspaces {
+      name = "prod-infrastructure"
+    }
+  }
+}
+
+# ───────────────────────────────────────
+# PHASE 3: Migrate state without downtime
+# ───────────────────────────────────────
+
+# Run terraform init — it detects the backend change and prompts for migration
+terraform init
+
+# Terraform will ask:
+# "Do you wish to copy existing state to Terraform Cloud?"
+# Answer: yes
+
+# This copies the S3 state to TFC seamlessly, preserving resource tracking
+
+# ───────────────────────────────────────
+# PHASE 4: Verify
+# ───────────────────────────────────────
+
+terraform plan  # Should show no changes — state was migrated successfully
+terraform apply  # Optional: verify apply works
+```
+
+#### CI/CD Migration
+
+```yaml
+# Before: GitHub Actions with S3 backend
+# - Action: terraform apply with manual trigger
+
+# After: GitHub Actions triggers TFC run, TFC executes
+# TFC handles state, locking, RBAC, and apply
+
+# .github/workflows/tfc-deploy.yml
+name: TFC Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  tfc-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hashicorp/setup-terraform@v2
+      
+      - name: Create TFC Run
+        run: |
+          curl -s --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request POST \
+            --data '{
+              "data": {
+                "attributes": {
+                  "message": "Deploy from GitHub Actions"
+                },
+                "type": "runs",
+                "relationships": {
+                  "workspace": {
+                    "data": {
+                      "type": "workspaces",
+                      "id": "${{ secrets.TFC_WORKSPACE_ID }}"
+                    }
+                  }
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/runs"
+```
+
+#### Rollback
+
+```bash
+# If TFC migration fails:
+# 1. Revert backend config to S3
+# 2. Re-run terraform init
+# 3. Terraform will detect the switch and prompt to copy state back
+
+# OR manually pull and push state
+terraform state pull > local.tfstate.bak
+# Revert config, re-init, push state back
+terraform state push local.tfstate.bak
+```
+
+#### Transition Period Strategy
+
+```
+Week 1: Migrate dev workspaces to TFC
+Week 2: Migrate staging, keep S3 as read-only backup
+Week 3: Migrate production, review access logs
+Week 4: Decommission S3 backend, revoke DynamoDB lock table
+```
+
+#### Cost Estimation
+
+| Feature | TFC Free | TFC Team | TFC Enterprise |
+|---------|----------|----------|----------------|
+| Cost | $0 | $20/user/mo | Custom |
+| State storage | Limited | Unlimited | Unlimited |
+| RBAC | ❌ | ✅ | ✅ |
+| Sentinel policies | ❌ | ❌ | ✅ |
+| Runs/month | Limited | Unlimited | Unlimited |
+| SSO | ❌ | ❌ | ✅ |
+
+---
+
+> 💡 **Quick tip:** For scenarios 2, 3, and 9 — detailed solutions already exist earlier in this chapter.
+
+---
+
 *Remember: In real-world scenarios, the quality of your solution matters more than speed. Take time to understand the problem before implementing changes.*
+
+---
+
+### 🎯 Scenario 7: Importing Hand-Rolled Infrastructure
+
+Your company has 200+ AWS resources that were manually created over 2 years through the console. You're tasked with bringing everything under Terraform management.
+
+**Questions to consider:**
+- How do you discover and inventory all existing resources?
+- What's the order of operations for importing without downtime?
+- How do you write the Terraform configuration to match each resource's exact current state?
+- What tools exist to automate bulk imports?
+- How do you handle resources with complex interdependencies?
+
+---
+
+### 🎯 Scenario 8: The Terraform Version Upgrade
+
+Your team is stuck on Terraform 0.12 with the AWS provider v3.0. You need to upgrade to Terraform 1.10+ and AWS provider v5.x. The codebase has 50+ modules and 30,000+ lines of HCL.
+
+**Questions to consider:**
+- How do you plan a safe upgrade across major versions?
+- What are the known breaking changes between 0.12 → 1.x and AWS provider v3 → v5?
+- What's your testing and validation strategy?
+- How do you handle the upgrade in a team environment with multiple in-flight changes?
+- What's your rollback strategy if the upgrade breaks something?
+
+---
+
+### 🎯 Scenario 9: Drift Detection Strategy
+
+Someone has been manually modifying your auto-scaling group's desired/min/max capacity through the AWS console during load tests. `terraform plan` keeps wanting to reset these values, causing friction between the DevOps and QA teams.
+
+**Questions to consider:**
+- How do you detect and report drift automatically?
+- How do you decide which manual changes to accept vs override?
+- How do you handle resources that are *expected* to change outside Terraform (ASG scaling, tags)?
+- What tooling can help with drift remediation pipeline?
+- How do you balance Terraform control vs operational flexibility?
+
+---
+
+### 🎯 Scenario 10: The Module Registry Dependency Paradox
+
+Your Terraform configuration uses `terraform-aws-modules/vpc/aws` v5.0.0 which requires AWS provider >= 4.0. Your security team mandates AWS provider ~> 3.0 for compliance reasons you can't bypass.
+
+**Questions to consider:**
+- How do you resolve this version conflict?
+- What options exist for using the module without the dependency conflict?
+- Can you fork the module and downgrade it?
+- What are the security implications of this decision?
+- How would you document the exception for auditors?
+
+---
+
+### 🎯 Scenario 11: Count vs For_Each Migration
+
+Your predecessor used `count` on a list of subnet IDs to create EC2 instances. Now you need to remove one subnet from the middle of the list. Due to index shifting, removing it will recreate all subsequent instances.
+
+**Questions to consider:**
+- How do you migrate from `count` to `for_each` without destroying and recreating resources?
+- What state manipulation is required?
+- How do you test the migration in a non-production environment first?
+- What happens to the state file during the migration?
+- How would you automate this for 100+ instances?
+
+---
+
+### 🎯 Scenario 12: The CI/CD Pipeline That Keeps Failing
+
+Your GitHub Actions pipeline runs `terraform plan` on every PR. It fails intermittently with "Error: Inconsistent dependency lock file" while other times it fails because `terraform init` can't find the backend. The failures seem random.
+
+**Questions to consider:**
+- What's likely causing the inconsistent lock file errors?
+- Why would `terraform init` fail randomly to find the backend?
+- How do you debug CI/CD issues when they're not reproducible locally?
+- What CI/CD best practices for Terraform would prevent these issues?
+- How should the pipeline cache `.terraform` directory and provider plugins?
+
+---
+
+### 🎯 Scenario 13: Remote State Sharing Between Teams
+
+Team A manages the VPC via Terraform (state in S3). Team B needs to deploy EC2 instances into that VPC. Team C manages security groups. All teams work in different AWS accounts.
+
+**Questions to consider:**
+- How do you set up cross-team, cross-account `terraform_remote_state` access?
+- What IAM permissions are needed for Team B to read Team A's state file?
+- How do you handle the coupling when Team A restructures their outputs?
+- What's a better alternative to `terraform_remote_state` for cross-team sharing?
+- How do you version and communicate state output changes between teams?
+
+---
+
+### 🎯 Scenario 14: The Failed Apply Recovery
+
+Your `terraform apply` successfully creates an S3 bucket but fails when trying to create a Lambda function that depends on it (IAM role hadn't propagated yet). The state file now has the S3 bucket but not the Lambda. Your infrastructure is in a partial state.
+
+**Questions to consider:**
+- How do you safely recover from partial apply?
+- Do you manually clean the S3 bucket from state, or fix the IAM and re-apply?
+- What are the risks of each recovery approach?
+- How would you design the configuration to minimize blast radius of partial failures?
+- What monitoring would help detect partial apply states?
+
+---
+
+### 🎯 Scenario 15: Terraform Cloud Migration
+
+You currently use S3 + DynamoDB as your backend. Leadership wants to move to Terraform Cloud/Enterprise for better RBAC, policy enforcement, and run workflows.
+
+**Questions to consider:**
+- How do you migrate existing state from S3 to Terraform Cloud without downtime?
+- How does the migration affect your existing CI/CD pipelines?
+- What changes to team workflow will be required?
+- How do you handle the transition period where some teams are on TFC and others are still on S3?
+- What are the cost implications and how do you estimate them?
+
+---
+
+> 💡 **Quick tip:** For scenarios 2, 3, and 9 — detailed solutions already exist earlier in this chapter. The solutions below provide the full treatment for all scenarios.
 
