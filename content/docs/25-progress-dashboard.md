@@ -1,6 +1,6 @@
 ---
 title: "📊 Progress Dashboard"
-weight: 0
+weight: -10
 bookFlatSection: false
 bookToc: false
 ---

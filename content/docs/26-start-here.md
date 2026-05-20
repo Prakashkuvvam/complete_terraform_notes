@@ -1,6 +1,6 @@
 ---
 title: "🚀 Start Here"
-weight: 0.5
+weight: -5
 bookFlatSection: false
 bookToc: true
 ---
