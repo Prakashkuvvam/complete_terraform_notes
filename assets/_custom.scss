@@ -769,6 +769,461 @@ pre:focus-within > .copy-button {
 }
 
 /* ===========================================
+   Interactive Exam Styles
+   Radio buttons, scoring, feedback for practice tests
+   =========================================== */
+
+/* Controls bar at top */
+.exam-interactive-controls {
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.exam-interactive-header h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.exam-interactive-subtitle {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--gray-500);
+}
+
+.exam-interactive-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.exam-btn {
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--gray-200);
+  background: var(--body-background);
+  color: var(--body-font-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.exam-btn:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  border-color: var(--gray-400);
+}
+
+.exam-btn:active {
+  transform: scale(0.96);
+}
+
+.exam-btn-submit {
+  background: var(--color-link);
+  color: #fff;
+  border-color: var(--color-link);
+}
+
+.exam-btn-submit:hover {
+  opacity: 0.9;
+}
+
+.exam-btn-reset {
+  background: transparent;
+  color: var(--gray-500);
+}
+
+.exam-btn-reset:hover {
+  background: var(--gray-200);
+  color: var(--body-font-color);
+}
+
+/* Question Cards */
+.exam-question-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin: 1rem 0;
+  background: var(--body-background);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+}
+
+.exam-question-card:hover {
+  border-color: var(--color-link);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Subtle "interactive" indicator on the question number badge */
+.exam-question-card .exam-q-number::after {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.6;
+  margin: 2px auto 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.exam-question-card:hover .exam-q-number::after {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+/* Animated pulse on the controls bar to draw attention */
+.exam-interactive-controls {
+  animation: exam-fade-in 0.5s ease;
+}
+
+@keyframes exam-fade-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.exam-q-header {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.exam-q-number {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 8px;
+  background: var(--color-link);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.exam-q-text {
+  flex: 1;
+  padding-top: 0.15rem;
+}
+
+/* Options */
+.exam-q-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-left: 0.25rem;
+}
+
+.exam-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.exam-option:hover {
+  background: var(--gray-100);
+  border-color: var(--gray-200);
+}
+
+.exam-option-input {
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+  accent-color: var(--color-link);
+  cursor: pointer;
+}
+
+.exam-option-input[type="radio"] {
+  transform: scale(1.15);
+}
+
+.exam-option-input[type="checkbox"] {
+  transform: scale(1.15);
+  border-radius: 3px;
+}
+
+.exam-option-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.exam-option-label {
+  flex: 1;
+  cursor: pointer;
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.exam-option-input:disabled ~ .exam-option-label {
+  cursor: default;
+}
+
+.exam-option-key {
+  font-weight: 600;
+  color: var(--gray-500);
+  flex-shrink: 0;
+  min-width: 1.5rem;
+}
+
+.exam-option-text {
+  flex: 1;
+}
+
+/* Feedback per question */
+.exam-q-feedback {
+  display: none;
+  margin-top: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.exam-feedback-correct {
+  display: block;
+  background: rgba(39, 174, 96, 0.1);
+  border: 1px solid rgba(39, 174, 96, 0.3);
+  color: #27ae60;
+}
+
+.exam-feedback-incorrect {
+  display: block;
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  color: #e74c3c;
+}
+
+.exam-feedback-unanswered {
+  display: block;
+  background: rgba(243, 156, 18, 0.1);
+  border: 1px solid rgba(243, 156, 18, 0.3);
+  color: #e67e22;
+}
+
+/* Correct/incorrect card states */
+.exam-correct {
+  border-color: rgba(39, 174, 96, 0.4);
+  background: rgba(39, 174, 96, 0.03);
+}
+
+.exam-incorrect {
+  border-color: rgba(231, 76, 60, 0.4);
+  background: rgba(231, 76, 60, 0.03);
+}
+
+.exam-unanswered {
+  border-color: rgba(243, 156, 18, 0.4);
+}
+
+/* Highlight correct/wrong options */
+.exam-option-highlight-correct {
+  background: rgba(39, 174, 96, 0.12) !important;
+  border-color: rgba(39, 174, 96, 0.5) !important;
+  border-radius: 8px;
+}
+
+.exam-option-highlight-wrong {
+  background: rgba(231, 76, 60, 0.12) !important;
+  border-color: rgba(231, 76, 60, 0.5) !important;
+  border-radius: 8px;
+}
+
+.exam-option-highlight-correct .exam-option-key {
+  color: #27ae60;
+}
+
+.exam-option-highlight-wrong .exam-option-key {
+  color: #e74c3c;
+}
+
+/* Score Summary */
+.exam-score-summary {
+  margin: 1rem 0 0.5rem;
+}
+
+.exam-score-card {
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 2px solid var(--gray-200);
+  background: var(--body-background);
+  animation: exam-slide-down 0.4s ease;
+}
+
+@keyframes exam-slide-down {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.exam-passed {
+  border-color: rgba(39, 174, 96, 0.5);
+  background: rgba(39, 174, 96, 0.05);
+}
+
+.exam-failed {
+  border-color: rgba(231, 76, 60, 0.5);
+  background: rgba(231, 76, 60, 0.05);
+}
+
+.exam-score-main {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.exam-score-pct {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.exam-passed .exam-score-pct {
+  color: #27ae60;
+}
+
+.exam-failed .exam-score-pct {
+  color: #e74c3c;
+}
+
+.exam-score-label {
+  font-size: 1rem;
+  color: var(--gray-500);
+}
+
+.exam-score-status {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+}
+
+.exam-passed .exam-score-status {
+  background: rgba(39, 174, 96, 0.15);
+  color: #27ae60;
+}
+
+.exam-failed .exam-score-status {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.exam-score-unanswered {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.85rem;
+  color: #e67e22;
+}
+
+.exam-score-bar-wrapper {
+  display: block;
+  width: 100%;
+  height: 10px;
+  background: var(--gray-200);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 0.75rem 0;
+}
+
+.exam-score-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+  background: linear-gradient(90deg, var(--color-link), #5fa3d0);
+}
+
+/* Domain Breakdown Table */
+.exam-domain-breakdown {
+  margin: 1rem 0;
+}
+
+.exam-domain-breakdown h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.exam-domain-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.exam-domain-table th,
+.exam-domain-table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--gray-200);
+}
+
+.exam-domain-table th {
+  background: var(--gray-100);
+  font-weight: 600;
+  text-align: left;
+}
+
+.exam-domain-table .domain-pass td:first-child {
+  border-left: 3px solid #27ae60;
+}
+
+.exam-domain-table .domain-fail td:first-child {
+  border-left: 3px solid #e74c3c;
+}
+
+/* Score Legend */
+.exam-score-legend {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--gray-200);
+  font-size: 0.85rem;
+  color: var(--gray-500);
+}
+
+.exam-score-legend p {
+  margin: 0.25rem 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .exam-interactive-actions {
+    flex-direction: column;
+  }
+
+  .exam-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .exam-score-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .exam-q-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* ===========================================
    Sidebar Progress Bar
    Always-visible progress in the left menu
    =========================================== */

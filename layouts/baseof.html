@@ -80,6 +80,9 @@
   {{ with resources.Get "exam-timer.js" | resources.Minify }}
     <script>{{ .Content | safeJS }}</script>
   {{ end }}
+  {{ with resources.Get "exam-interactive.js" | resources.Minify }}
+    <script>{{ .Content | safeJS }}</script>
+  {{ end }}
 {{ end }}
 
 {{ define "copyright" }}
