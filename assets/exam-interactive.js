@@ -207,45 +207,64 @@
      ============================================================= */
 
   function initInteractive(article, questions, answerKey) {
-    // Create the controls bar
-    var controlsBar = document.createElement('div');
-    controlsBar.className = 'exam-interactive-controls';
-    controlsBar.innerHTML =
+    // ── Top bar: header + Clear All ──
+    var topBar = document.createElement('div');
+    topBar.className = 'exam-interactive-controls';
+    topBar.innerHTML =
       '<div class="exam-interactive-header">' +
         '<h3>📝 Interactive Mode</h3>' +
-        '<p class="exam-interactive-subtitle">Select your answers below, then click "Submit Answers" to check your score.</p>' +
+        '<p class="exam-interactive-subtitle">Select your answers below, then click "Submit Answers" at the bottom to check your score.</p>' +
       '</div>' +
       '<div class="exam-interactive-actions">' +
-        '<button class="exam-btn exam-btn-submit" id="exam-submit-btn">✅ Submit Answers</button>' +
+        '<span class="exam-answered-badge" id="exam-answered-badge">0 / ' + questions.length + ' answered</span>' +
         '<button class="exam-btn exam-btn-reset" id="exam-reset-btn">🔄 Clear All</button>' +
-      '</div>' +
-      '<div class="exam-score-summary" id="exam-score-summary" style="display:none;"></div>';
+      '</div>';
 
-    // Insert controls bar at the top (after the exam controls)
+    // Insert top bar after exam controls (timer)
     var examControls = article.querySelector('.exam-controls');
     if (examControls) {
-      examControls.parentNode.insertBefore(controlsBar, examControls.nextSibling);
+      examControls.parentNode.insertBefore(topBar, examControls.nextSibling);
     } else {
-      article.insertBefore(controlsBar, article.firstChild);
+      article.insertBefore(topBar, article.firstChild);
     }
 
     // Transform each question
     for (var qi = 0; qi < questions.length; qi++) {
       var q = questions[qi];
-      transformQuestion(q);
+      transformQuestion(q, questions);
     }
+
+    // ── Bottom bar: Submit + score summary (inserted before details/answer key) ──
+    var detailsEl = article.querySelector('details');
+    var bottomBar = document.createElement('div');
+    bottomBar.className = 'exam-interactive-controls exam-bottom-bar';
+    bottomBar.id = 'exam-bottom-bar';
+    bottomBar.innerHTML =
+      '<div class="exam-interactive-actions">' +
+        '<button class="exam-btn exam-btn-submit" id="exam-submit-btn">✅ Submit Answers</button>' +
+        '<button class="exam-btn exam-btn-reset" id="exam-reset-btn-bottom">🔄 Clear All</button>' +
+      '</div>' +
+      '<div class="exam-score-summary" id="exam-score-summary" style="display:none;"></div>';
+
+    article.insertBefore(bottomBar, detailsEl);
 
     // Bind events
     document.getElementById('exam-submit-btn').addEventListener('click', function () {
       gradeTest(questions, answerKey);
     });
 
-    document.getElementById('exam-reset-btn').addEventListener('click', function () {
-      resetTest(questions);
+    function resetHandler() { resetTest(questions); }
+    document.getElementById('exam-reset-btn').addEventListener('click', resetHandler);
+    document.getElementById('exam-reset-btn-bottom').addEventListener('click', resetHandler);
+
+    // Track answered count
+    article.addEventListener('change', function () {
+      updateAnsweredCount(questions);
     });
+    updateAnsweredCount(questions);
   }
 
-  function transformQuestion(q) {
+  function transformQuestion(q, questions) {
     var wrapper = document.createElement('div');
     wrapper.className = 'exam-question-card';
     wrapper.dataset.qnum = q.number;
@@ -295,10 +314,44 @@
       label.appendChild(textSpan);
       optDiv.appendChild(input);
       optDiv.appendChild(label);
+
+      // Make entire option row clickable
+      optDiv.addEventListener('click', function (e) {
+        var inp = this.querySelector('.exam-option-input');
+        if (!inp || inp.disabled) return;
+        // Don't double-fire — the <label> with htmlFor already handles clicks
+        // on itself and its children (spans, text nodes) natively.
+        if (e.target.closest('.exam-option-label, .exam-option-input')) return;
+        if (inp.type === 'radio') {
+          inp.checked = true;
+        } else {
+          inp.checked = !inp.checked;
+        }
+        // Trigger change event for answered count tracking
+        var evt = document.createEvent('HTMLEvents');
+        evt.initEvent('change', true, false);
+        inp.dispatchEvent(evt);
+      });
+
       optionsDiv.appendChild(optDiv);
     }
 
     wrapper.appendChild(optionsDiv);
+
+    // Per-question clear button
+    var clearRow = document.createElement('div');
+    clearRow.className = 'exam-q-clear-row';
+    var clearBtn = document.createElement('button');
+    clearBtn.className = 'exam-btn exam-btn-clear-q';
+    clearBtn.textContent = '✕ Clear';
+    clearBtn.type = 'button';
+    clearBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      clearSingleQuestion(wrapper);
+      updateAnsweredCount(questions);
+    });
+    clearRow.appendChild(clearBtn);
+    wrapper.appendChild(clearRow);
 
     // Feedback area
     var feedback = document.createElement('div');
@@ -315,6 +368,29 @@
       var elToRemove = q.elementsToRemove[ri];
       if (elToRemove && elToRemove.parentNode === parent) {
         parent.removeChild(elToRemove);
+      }
+    }
+  }
+
+  /* ── Clear single question ── */
+  function clearSingleQuestion(wrapper) {
+    var inputs = wrapper.querySelectorAll('.exam-option-input');
+    for (var i = 0; i < inputs.length; i++) {
+      inputs[i].checked = false;
+    }
+    // If already graded, also clear feedback
+    var feedback = wrapper.querySelector('.exam-q-feedback');
+    if (feedback && feedback.style.display !== 'none') {
+      feedback.style.display = 'none';
+      feedback.className = 'exam-q-feedback';
+      wrapper.classList.remove('exam-correct', 'exam-incorrect', 'exam-unanswered');
+      var options = wrapper.querySelectorAll('.exam-option');
+      for (var j = 0; j < options.length; j++) {
+        options[j].classList.remove('exam-option-highlight-correct', 'exam-option-highlight-wrong');
+      }
+      // Re-enable inputs
+      for (var k = 0; k < inputs.length; k++) {
+        inputs[k].disabled = false;
       }
     }
   }
@@ -386,8 +462,11 @@
 
     showScoreSummary(correctCount, totalQuestions, unanswered, domainResults, answerKey);
 
-    // Auto-scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Auto-scroll to the score summary at the bottom
+    var bottomBar = document.getElementById('exam-bottom-bar');
+    if (bottomBar) {
+      bottomBar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function showFeedback(wrapper, type, message) {
@@ -509,13 +588,11 @@
       summary.innerHTML = '';
     }
 
-    // Reset submit button
+    // Reset submit button text
     var submitBtn = document.getElementById('exam-submit-btn');
     if (submitBtn) {
       submitBtn.textContent = '✅ Submit Answers';
-      submitBtn.onclick = function () {
-        gradeTest(questions, parseAnswerKey(document.querySelectorAll('.book-page details table')));
-      };
+      submitBtn.onclick = null;
     }
 
     // Reset each question
@@ -548,11 +625,48 @@
       }
     }
 
+    // Reset submit button event
+    var newSubmitBtn = document.getElementById('exam-submit-btn');
+    if (newSubmitBtn) {
+      // Remove old listeners by replacing
+      var clone = newSubmitBtn.cloneNode(true);
+      newSubmitBtn.parentNode.replaceChild(clone, newSubmitBtn);
+      clone.addEventListener('click', function () {
+        gradeTest(questions, parseAnswerKey(document.querySelectorAll('.book-page details table')));
+      });
+    }
+
+    updateAnsweredCount(questions);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   /* =============================================================
-     7. INIT
+     7. ANSWERED COUNT
+     ============================================================= */
+
+  function updateAnsweredCount(questions) {
+    var answered = 0;
+    var total = questions.length;
+    for (var qi = 0; qi < total; qi++) {
+      var q = questions[qi];
+      var wrapper = document.querySelector('.exam-question-card[data-qnum="' + q.number + '"]');
+      if (!wrapper) continue;
+      var checked = wrapper.querySelectorAll('.exam-option-input:checked');
+      if (checked.length > 0) answered++;
+    }
+    var badge = document.getElementById('exam-answered-badge');
+    if (badge) {
+      badge.textContent = answered + ' / ' + total + ' answered';
+      if (answered === total) {
+        badge.className = 'exam-answered-badge exam-answered-all';
+      } else {
+        badge.className = 'exam-answered-badge';
+      }
+    }
+  }
+
+  /* =============================================================
+     8. INIT
      ============================================================= */
 
   function autoInit() {
